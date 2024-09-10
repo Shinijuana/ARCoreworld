@@ -6,7 +6,7 @@
   <title>Esperienza AR - Oggetto Unico</title>
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   <style>
-    /* Questo mantiene i nodi figli nascosti mentre l'elemento si carica */
+    /* CSS per AR e Fallback */
     :not(:defined) > * {
       display: none;
     }
@@ -32,7 +32,7 @@
       padding: 0px 16px 0px 40px;
       font-family: Roboto Regular, Helvetica Neue, sans-serif;
       font-size: 14px;
-      color:#4285f4;
+      color: #4285f4;
       height: 36px;
       line-height: 36px;
       border-radius: 18px;
@@ -92,30 +92,63 @@
 </head>
 <body>
 
-  <!-- Esperienza AR con un oggetto -->
-  <model-viewer 
-    src="assets/ASTRONAVE.glb" 
-    poster="assets/poster.png" 
-    tone-mapping="neutral" 
-    shadow-intensity="1" 
-    ar 
-    camera-controls 
-    touch-action="pan-y" 
-    alt="Un modello 3D di un oggetto">
-    
-    <button slot="ar-button" id="ar-button">
-      View in your space
-    </button>
+  <div id="ar-content">
+    <!-- Esperienza AR con un oggetto -->
+    <model-viewer 
+      id="model-viewer"
+      src="assets/ASTRONAVE.glb" 
+      poster="assets/poster.png" 
+      tone-mapping="neutral" 
+      shadow-intensity="1" 
+      ar 
+      camera-controls 
+      touch-action="pan-y" 
+      alt="Un modello 3D di un oggetto">
+      
+      <button slot="ar-button" id="ar-button">
+        View in your space
+      </button>
 
-    <div id="ar-prompt">
-      <img src="assets/hand.png">
-    </div>
+      <div id="ar-prompt">
+        <img src="assets/hand.png">
+      </div>
 
-    <button id="ar-failure">
-      AR is not tracking!
-    </button>
+      <button id="ar-failure">
+        AR is not tracking!
+      </button>
 
-  </model-viewer>
+    </model-viewer>
+  </div>
 
+  <script>
+    // Funzione per verificare se il dispositivo supporta WebXR e AR
+    async function checkARSupport() {
+      if ('xr' in navigator) {
+        const supportsAR = await navigator.xr.isSessionSupported('immersive-ar');
+        return supportsAR;
+      } else {
+        return false;
+      }
+    }
+
+    // Carica il fallback HTML se AR non è supportato
+    async function loadFallbackIfNeeded() {
+      const supportsAR = await checkARSupport();
+
+      if (!supportsAR) {
+        // Carica il contenuto di fallback
+        fetch('fallback.html')
+          .then(response => response.text())
+          .then(html => {
+            document.open();
+            document.write(html);
+            document.close();
+          })
+          .catch(error => console.error('Errore nel caricamento del fallback:', error));
+      }
+    }
+
+    loadFallbackIfNeeded();
+  </script>
 </body>
 </html>
