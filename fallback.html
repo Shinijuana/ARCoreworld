@@ -1,50 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>A-Frame World Tracking Example</title>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/alvaar/dist/alvaar.min.js"></script>
-
-    <script src="js/gesture-detector.js"></script>
-    <script src="js/gesture-handler.js"></script>
+<title>AR World Tracking with Three.js and WebXR</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/VRButton.js"></script>
+    <script src="https://unpkg.com/@webxr-input-profiles/assets@1.0.0/dist/webxr-input-profiles.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/loaders/GLTFLoader.js"></script>
 </head>
 <body>
-    <a-scene
-        gesture-detector
-        id="scene"
-    >
-        <a-assets>
-            <a-asset-item id="astronave" src="assets/ASTRONAVE.glb"></a-asset-item>
-        </a-assets>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-        <a-camera
-            id="camera"
-            position="0 8 8"
-            raycaster="objects: .clickable"
-            cursor="fuse: false; rayOrigin: mouse;"
-            emitevents="true">
-        </a-camera>
-        
-    
-        <a-plane 
-            id="tracked" 
-            rotation="0 0 0" 
-            position="0 0 0" 
-            scale="1 1 1" 
-            opacity="0.1">
-            <a-entity 
-                id="ASTRO" 
-                gltf-model="#astronave" 
-                position="0 0 -5" 
-                scale=".6 .6 .6" 
-                class="clickable" 
-                emitevents="true"
-                gesture-handler>
-            </a-entity>
-        </a-plane>
-    
-    </a-scene>
+        // Enable WebXR AR mode
+        document.body.appendChild(VRButton.createButton(renderer));
+        renderer.xr.enabled = true;
+
+        // Create a variable to store the loaded model
+        let model;
+
+        // Load the GLB model
+        const loader = new THREE.GLTFLoader();
+        loader.load('ASTRONAVE.glb', (gltf) => {
+            model = gltf.scene;
+            model.scale.set(1, 1, 1);  // Scale the model if necessary
+            scene.add(model);
+        });
+
+        // Handle AR session start
+        let hitTestSource = null;
+        let hitTestSourceRequested = false;
+
+        navigator.xr.requestSession('immersive-ar', {
+            requiredFeatures: ['hit-test']
+        }).then((xrSession) => {
+            renderer.xr.setSession(xrSession);
+
+            xrSession.requestReferenceSpace('local').then((referenceSpace) => {
+                xrSession.requestHitTestSource({ space: referenceSpace }).then((source) => {
+                    hitTestSource = source;
+                    hitTestSourceRequested = true;
+                });
+            });
+        });
+
+        // Animation loop
+        function animate() {
+            renderer.setAnimationLoop(() => {
+                renderer.render(scene, camera);
+
+                if (hitTestSourceRequested && hitTestSource) {
+                    const frame = renderer.xr.getSession().requestAnimationFrame(() => {});
+                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+                    if (hitTestResults.length > 0) {
+                        const hitPose = hitTestResults[0].getPose(renderer.xr.getReferenceSpace());
+                        if (hitPose) {
+                            if (model) {
+                                // Update the model's position based on hit test result
+                                model.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        animate();
+
+        // Handle resize event
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
