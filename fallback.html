@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<title>AR World Tracking with Three.js and WebXR</title>
+    <meta charset="utf-8">
+    <title>AR World Tracking with Three.js and WebXR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/VRButton.js"></script>
     <script src="https://unpkg.com/@webxr-input-profiles/assets@1.0.0/dist/webxr-input-profiles.js"></script>
@@ -9,7 +10,7 @@
 </head>
 <body>
     <script>
-        // Scene setup
+        // Initialize scene, camera, and renderer
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer();
@@ -20,18 +21,17 @@
         document.body.appendChild(VRButton.createButton(renderer));
         renderer.xr.enabled = true;
 
-        // Create a variable to store the loaded model
-        let model;
-
         // Load the GLB model
         const loader = new THREE.GLTFLoader();
         loader.load('ASTRONAVE.glb', (gltf) => {
-            model = gltf.scene;
-            model.scale.set(1, 1, 1);  // Scale the model if necessary
+            const model = gltf.scene;
+            model.scale.set(1, 1, 1);  // Adjust scale as needed
             scene.add(model);
+        }, undefined, (error) => {
+            console.error('An error occurred while loading the model:', error);
         });
 
-        // Handle AR session start
+        // Handle AR session and hit test
         let hitTestSource = null;
         let hitTestSourceRequested = false;
 
@@ -60,10 +60,12 @@
                     if (hitTestResults.length > 0) {
                         const hitPose = hitTestResults[0].getPose(renderer.xr.getReferenceSpace());
                         if (hitPose) {
-                            if (model) {
-                                // Update the model's position based on hit test result
-                                model.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
-                            }
+                            // Assuming there's a model added to the scene
+                            scene.children.forEach(child => {
+                                if (child.isMesh) {
+                                    child.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
+                                }
+                            });
                         }
                     }
                 }
@@ -71,7 +73,7 @@
         }
         animate();
 
-        // Handle resize event
+        // Handle window resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
