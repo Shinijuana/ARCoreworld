@@ -124,8 +124,13 @@
     // Funzione per verificare se il dispositivo supporta WebXR e AR
     async function checkARSupport() {
       if ('xr' in navigator) {
-        const supportsAR = await navigator.xr.isSessionSupported('immersive-ar');
-        return supportsAR;
+        try {
+          const supportsAR = await navigator.xr.isSessionSupported('immersive-ar');
+          return supportsAR;
+        } catch (e) {
+          console.error('Errore nel controllo AR:', e);
+          return false;
+        }
       } else {
         return false;
       }
