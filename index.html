@@ -158,37 +158,5 @@
       <p>Il tuo dispositivo non supporta AR. Puoi visualizzare il modello 3D <a href="fallback.html">qui</a>.</p>
     </div>
   </div>
-
-  <script>
-    async function checkARSupport() {
-      if ('xr' in navigator) {
-        try {
-          const supportsAR = await navigator.xr.isSessionSupported('immersive-ar');
-          return supportsAR;
-        } catch (e) {
-          console.error('Errore nel controllo AR:', e);
-          return false;
-        }
-      } else {
-        return false;
-      }
-    }
-
-    async function loadFallbackIfNeeded() {
-      const supportsAR = await checkARSupport();
-
-      if (!supportsAR) {
-        document.getElementById('ar-content').style.display = 'none';
-        document.getElementById('fallback-message').style.display = 'block';
-      }
-    }
-
-    // Aggiungi evento al pulsante fallback per mostrare il fallback
-    document.getElementById('fallback-button').addEventListener('click', () => {
-      window.location.href = 'fallback.html';
-    });
-
-    loadFallbackIfNeeded();
-  </script>
 </body>
 </html>
