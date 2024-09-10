@@ -51,17 +51,37 @@
       outline: 1px solid #4285f4;
     }
 
-    @keyframes circle {
-      from { transform: translateX(-50%) rotate(0deg) translateX(50px) rotate(0deg); }
-      to   { transform: translateX(-50%) rotate(360deg) translateX(50px) rotate(-360deg); }
+    #fallback-button {
+      background-color: #fff;
+      color: #4285f4;
+      border: 1px solid #DADCE0;
+      border-radius: 18px;
+      height: 36px;
+      line-height: 36px;
+      font-family: Roboto Regular, Helvetica Neue, sans-serif;
+      font-size: 14px;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 80px;
+      padding: 0 16px;
+      text-align: center;
+      cursor: pointer;
     }
 
-    @keyframes elongate {
-      from { transform: translateX(100px); }
-      to   { transform: translateX(-100px); }
+    #fallback-button:active {
+      background-color: #E8EAED;
     }
 
-    model-viewer > #ar-prompt {
+    #fallback-button:focus {
+      outline: none;
+    }
+
+    #fallback-button:focus-visible {
+      outline: 1px solid #4285f4;
+    }
+
+    #ar-prompt {
       position: absolute;
       left: 50%;
       bottom: 175px;
@@ -73,11 +93,11 @@
       display: block;
     }
 
-    model-viewer > #ar-prompt > img {
+    #ar-prompt > img {
       animation: circle 4s linear infinite;
     }
 
-    model-viewer > #ar-failure {
+    #ar-failure {
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
@@ -87,6 +107,17 @@
 
     model-viewer[ar-tracking="not-tracking"] > #ar-failure {
       display: block;
+    }
+
+    #fallback-message {
+      display: none;
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    #fallback-message a {
+      color: #4285f4;
+      text-decoration: none;
     }
   </style>
 </head>
@@ -106,7 +137,11 @@
       alt="Un modello 3D di un oggetto">
       
       <button slot="ar-button" id="ar-button">
-        View in your space
+        Use ARCore or ARKit
+      </button>
+
+      <button id="fallback-button">
+        Unsupported AR
       </button>
 
       <div id="ar-prompt">
@@ -118,10 +153,13 @@
       </button>
 
     </model-viewer>
+
+    <div id="fallback-message">
+      <p>Il tuo dispositivo non supporta AR. Puoi visualizzare il modello 3D <a href="fallback.html">qui</a>.</p>
+    </div>
   </div>
 
   <script>
-    // Funzione per verificare se il dispositivo supporta WebXR e AR
     async function checkARSupport() {
       if ('xr' in navigator) {
         try {
@@ -136,22 +174,19 @@
       }
     }
 
-    // Carica il fallback HTML se AR non è supportato
     async function loadFallbackIfNeeded() {
       const supportsAR = await checkARSupport();
 
       if (!supportsAR) {
-        // Carica il contenuto di fallback
-        fetch('fallback.html')
-          .then(response => response.text())
-          .then(html => {
-            document.open();
-            document.write(html);
-            document.close();
-          })
-          .catch(error => console.error('Errore nel caricamento del fallback:', error));
+        document.getElementById('ar-content').style.display = 'none';
+        document.getElementById('fallback-message').style.display = 'block';
       }
     }
+
+    // Aggiungi evento al pulsante fallback per mostrare il fallback
+    document.getElementById('fallback-button').addEventListener('click', () => {
+      window.location.href = 'fallback.html';
+    });
 
     loadFallbackIfNeeded();
   </script>
