@@ -39,11 +39,15 @@
   const video = document.getElementById('video');
   const modelEntity = document.getElementById('astronave');
 
-  // Start video stream
+  // Start video stream and wait for metadata to load
   navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
     video.srcObject = stream;
-    video.play();
-    processVideo();
+
+    // Wait for video metadata to load (width, height, etc.)
+    video.addEventListener('loadedmetadata', () => {
+      video.play();
+      processVideo();  // Start video processing only after metadata is loaded
+    });
   });
 
   function processVideo() {
@@ -62,6 +66,12 @@
     for (let i = 0; i < width * height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
 
     function detectFeatures() {
+      // Ensure video width and height are non-zero before proceeding
+      if (width === 0 || height === 0) {
+        console.error("Video dimensions are zero");
+        return [];
+      }
+
       ctx.drawImage(video, 0, 0, width, height);
       const imageData = ctx.getImageData(0, 0, width, height);
 
