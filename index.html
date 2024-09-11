@@ -68,9 +68,11 @@
 
           // Verifica il tipo di matrice effettivo
           const actualType = src.type();
+          console.log("Matrix type before conversion: " + actualType);
+
+          // If the matrix is not CV_8UC4, convert it to RGBA
           if (actualType !== cv.CV_8UC4) {
-            console.error("Unexpected matrix type: " + actualType);
-            return;
+            cv.cvtColor(src, src, cv.COLOR_RGB2RGBA); // Convert from RGB to RGBA
           }
 
           // Converte il frame in scala di grigi
