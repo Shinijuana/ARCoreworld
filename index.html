@@ -6,7 +6,7 @@
   <title>AR Astronave con SLAM</title>
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.rawgit.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 </head>
 <body style="margin: 0; overflow: hidden;">
 
@@ -16,96 +16,118 @@
          vr-mode-ui="enabled: false" 
          device-orientation-permission-ui="enabled: false">
     
- <a-assets>
+  <a-assets>
       <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
-    </a-assets>
+  </a-assets>
 
-    
   <!-- Modello 3D della astronave -->
-  <a-entity id="astronave" position="0 0 0" gltf-model ="#astro" scale="1 1 1">
-  </a-entity>
+  <a-entity id="astronave" position="0 0 0" gltf-model ="#astro" scale="1 1 1"></a-entity>
 
   <!-- Fotocamera per la scena AR -->
   <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;" raycaster="near: 10; far: 10000; objects: .clickable"></a-camera>
 
 </a-scene>
 
-<!-- Script OpenCV.js per il rilevamento di superfici -->
+<!-- Video e canvas per OpenCV.js -->
 <video id="video" width="640" height="480" autoplay></video>
 <canvas id="canvasOutput" width="640" height="480"></canvas>
 
 <script type="text/javascript">
- video.addEventListener('play', () => {
-  const src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
-  const prevGray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
-  const gray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
-  const cap = new cv.VideoCapture(video);
-
-  // Inizializza ORB senza parametri extra
-  detector = new cv.ORB();
-  matcher = new cv.BFMatcher();
-
-  let keypointsPrev = new cv.KeyPointVector();
-  let descriptorsPrev = new cv.Mat();
-
-  cap.read(src);
-  cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY);
-
-  // Rilevamento punti chiave iniziale
-  detector.detectAndCompute(prevGray, new cv.Mat(), keypointsPrev, descriptorsPrev);
-
-  function processVideo() {
-    cap.read(src);
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-    // Rilevamento punti chiave corrente
-    let keypointsCurr = new cv.KeyPointVector();
-    let descriptorsCurr = new cv.Mat();
-    detector.detectAndCompute(gray, new cv.Mat(), keypointsCurr, descriptorsCurr);
-
-    // Matcher dei descrittori
-    let matches = new cv.DMatchVector();
-    matcher.match(descriptorsPrev, descriptorsCurr, matches);
-
-    // Traccia i punti sulla superficie rilevata
-    let matchedPoints = [];
-    for (let i = 0; i < matches.size(); i++) {
-      let match = matches.get(i);
-      let prevPoint = keypointsPrev.get(match.queryIdx).pt;
-      let currPoint = keypointsCurr.get(match.trainIdx).pt;
-      matchedPoints.push({ prev: prevPoint, curr: currPoint });
+  // Funzione per controllare se OpenCV è pronto
+  function checkOpenCvReady() {
+    if (cv && cv.Mat) {
+      console.log('OpenCV.js is ready.');
+      startVideoProcessing();
+    } else {
+      console.log('Waiting for OpenCV.js...');
+      setTimeout(checkOpenCvReady, 100);  // Riprova ogni 100 ms
     }
-
-    console.log(`Number of matched points: ${matchedPoints.length}`);
-
-    if (matchedPoints.length > 5) {
-      // Calcola la media dei punti per stimare una posizione nella scena
-      let avgX = matchedPoints.reduce((sum, p) => sum + p.curr.x, 0) / matchedPoints.length;
-      let avgY = matchedPoints.reduce((sum, p) => sum + p.curr.y, 0) / matchedPoints.length;
-
-      // Converti le coordinate del piano 2D in coordinate 3D della scena A-Frame
-      let x3D = (avgX / video.width) * 10 - 5;  // Scala e traslazione
-      let y3D = (avgY / video.height) * 10 - 5;
-
-      // Posiziona l'astronave nel punto calcolato
-      let astronave = document.getElementById('astronave');
-      astronave.setAttribute('position', `${x3D} ${y3D} -5`);
-    }
-
-    // Disegna i punti di tracking
-    cv.drawKeypoints(gray, keypointsCurr, src);
-    cv.imshow('canvasOutput', src);
-
-    // Aggiorna i punti chiave precedenti
-    keypointsPrev = keypointsCurr;
-    descriptorsPrev = descriptorsCurr;
-
-    requestAnimationFrame(processVideo);
   }
 
-  processVideo();
-});
+  // Funzione principale per processare il video e tracciare feature
+  function startVideoProcessing() {
+    const video = document.getElementById('video');
+    const canvasOutput = document.getElementById('canvasOutput');
+    const ctx = canvasOutput.getContext('2d');
 
+    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      video.srcObject = stream;
+    });
+
+    video.addEventListener('play', () => {
+      const src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+      const prevGray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
+      const gray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
+      const cap = new cv.VideoCapture(video);
+
+      // Inizializza ORB senza parametri extra
+      const detector = new cv.ORB();
+      const matcher = new cv.BFMatcher();
+
+      let keypointsPrev = new cv.KeyPointVector();
+      let descriptorsPrev = new cv.Mat();
+
+      cap.read(src);
+      cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY);
+
+      // Rilevamento punti chiave iniziale
+      detector.detectAndCompute(prevGray, new cv.Mat(), keypointsPrev, descriptorsPrev);
+
+      function processVideo() {
+        cap.read(src);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+        // Rilevamento punti chiave corrente
+        let keypointsCurr = new cv.KeyPointVector();
+        let descriptorsCurr = new cv.Mat();
+        detector.detectAndCompute(gray, new cv.Mat(), keypointsCurr, descriptorsCurr);
+
+        // Matcher dei descrittori
+        let matches = new cv.DMatchVector();
+        matcher.match(descriptorsPrev, descriptorsCurr, matches);
+
+        // Traccia i punti sulla superficie rilevata
+        let matchedPoints = [];
+        for (let i = 0; i < matches.size(); i++) {
+          let match = matches.get(i);
+          let prevPoint = keypointsPrev.get(match.queryIdx).pt;
+          let currPoint = keypointsCurr.get(match.trainIdx).pt;
+          matchedPoints.push({ prev: prevPoint, curr: currPoint });
+        }
+
+        console.log(`Number of matched points: ${matchedPoints.length}`);
+
+        if (matchedPoints.length > 5) {
+          // Calcola la media dei punti per stimare una posizione nella scena
+          let avgX = matchedPoints.reduce((sum, p) => sum + p.curr.x, 0) / matchedPoints.length;
+          let avgY = matchedPoints.reduce((sum, p) => sum + p.curr.y, 0) / matchedPoints.length;
+
+          // Converti le coordinate del piano 2D in coordinate 3D della scena A-Frame
+          let x3D = (avgX / video.width) * 10 - 5;  // Scala e traslazione
+          let y3D = (avgY / video.height) * 10 - 5;
+
+          // Posiziona l'astronave nel punto calcolato
+          let astronave = document.getElementById('astronave');
+          astronave.setAttribute('position', `${x3D} ${y3D} -5`);
+        }
+
+        // Disegna i punti di tracking
+        cv.drawKeypoints(gray, keypointsCurr, src);
+        cv.imshow('canvasOutput', src);
+
+        // Aggiorna i punti chiave precedenti
+        keypointsPrev = keypointsCurr;
+        descriptorsPrev = descriptorsCurr;
+
+        requestAnimationFrame(processVideo);
+      }
+
+      processVideo();
+    });
+  }
+
+  // Avvia il controllo per OpenCV
+  checkOpenCvReady();
 </script>
 
 </body>
