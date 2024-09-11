@@ -6,7 +6,7 @@
   <title>AR Astronave con SLAM</title>
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.rawgit.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
 </head>
 <body style="margin: 0; overflow: hidden;">
 
@@ -26,7 +26,8 @@
   </a-entity>
 
   <!-- Fotocamera per la scena AR -->
-  <a-entity camera></a-entity>
+  <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;" raycaster="near: 10; far: 10000; objects: .clickable"></a-camera>
+
 </a-scene>
 
 <!-- Script OpenCV.js per il rilevamento di superfici -->
@@ -52,7 +53,7 @@
       const cap = new cv.VideoCapture(video);
 
       // Rilevatore ORB per rilevamento feature
-      detector = new cv.ORB();
+      detector = new cv.ORB({ nFeatures: 1000 });  // Aumenta il numero di feature rilevate
       matcher = new cv.BFMatcher();
 
       let keypointsPrev = new cv.KeyPointVector();
@@ -86,7 +87,9 @@
           matchedPoints.push({ prev: prevPoint, curr: currPoint });
         }
 
-        if (matchedPoints.length > 0) {
+        console.log(`Number of matched points: ${matchedPoints.length}`);
+
+        if (matchedPoints.length > 5) {
           // Calcola la media dei punti per stimare una posizione nella scena
           let avgX = matchedPoints.reduce((sum, p) => sum + p.curr.x, 0) / matchedPoints.length;
           let avgY = matchedPoints.reduce((sum, p) => sum + p.curr.y, 0) / matchedPoints.length;
