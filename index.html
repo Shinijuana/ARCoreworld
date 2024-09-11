@@ -33,7 +33,6 @@
 <canvas id="canvasOutput" width="640" height="480"></canvas>
 
 <script type="text/javascript">
-  // Funzione principale per avviare il processamento video
   function startVideoProcessing() {
     const video = document.getElementById('video');
     const canvasOutput = document.getElementById('canvasOutput');
@@ -48,8 +47,15 @@
       const width = video.videoWidth;
       const height = video.videoHeight;
 
-      // Usa cv.CV_8UC4 per la matrice src (4 canali)
-      const src = new cv.Mat(height, width, cv.CV_8UC4);
+      // Verifica il formato del video
+      let type = cv.CV_8UC4;
+      const isRGB = false; // Assumiamo che il video sia RGBA, cambia a true se il video è RGB
+
+      if (isRGB) {
+        type = cv.CV_8UC3; // Cambia a 3 canali se il video è in RGB
+      }
+
+      const src = new cv.Mat(height, width, type);
       const gray = new cv.Mat(height, width, cv.CV_8UC1);
       const prevGray = new cv.Mat(height, width, cv.CV_8UC1);
       const cap = new cv.VideoCapture(video);
@@ -60,25 +66,22 @@
       let keypointsPrev = new cv.KeyPointVector();
       let descriptorsPrev = new cv.Mat();
 
-      // Inizializza punti chiave e descrittori
+      // Legge il primo frame per l'inizializzazione
       cap.read(src);
-      cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY);
+      cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY); // Cambia a COLOR_RGB2GRAY se il video è RGB
       detector.detectAndCompute(prevGray, new cv.Mat(), keypointsPrev, descriptorsPrev);
 
       function processVideo() {
         cap.read(src);
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY); // Cambia a COLOR_RGB2GRAY se il video è RGB
 
-        // Rilevamento punti chiave corrente
         const keypointsCurr = new cv.KeyPointVector();
         const descriptorsCurr = new cv.Mat();
         detector.detectAndCompute(gray, new cv.Mat(), keypointsCurr, descriptorsCurr);
 
-        // Matcher dei descrittori
         const matches = new cv.DMatchVector();
         matcher.match(descriptorsPrev, descriptorsCurr, matches);
 
-        // Traccia i punti sulla superficie rilevata
         const matchedPoints = [];
         for (let i = 0; i < matches.size(); i++) {
           const match = matches.get(i);
@@ -90,24 +93,19 @@
         console.log(`Number of matched points: ${matchedPoints.length}`);
 
         if (matchedPoints.length > 5) {
-          // Calcola la media dei punti per stimare una posizione nella scena
           const avgX = matchedPoints.reduce((sum, p) => sum + p.curr.x, 0) / matchedPoints.length;
           const avgY = matchedPoints.reduce((sum, p) => sum + p.curr.y, 0) / matchedPoints.length;
 
-          // Converti le coordinate del piano 2D in coordinate 3D della scena A-Frame
-          const x3D = (avgX / width) * 10 - 5;  // Scala e traslazione
+          const x3D = (avgX / width) * 10 - 5;
           const y3D = (avgY / height) * 10 - 5;
 
-          // Posiziona l'astronave nel punto calcolato
           const astronave = document.getElementById('astronave');
           astronave.setAttribute('position', `${x3D} ${y3D} -5`);
         }
 
-        // Disegna i punti di tracking
         cv.drawKeypoints(gray, keypointsCurr, src);
         cv.imshow('canvasOutput', src);
 
-        // Aggiorna i punti chiave precedenti
         keypointsPrev.delete();
         descriptorsPrev.delete();
         keypointsPrev = keypointsCurr;
@@ -120,13 +118,11 @@
     });
   }
 
-  // Funzione chiamata quando OpenCV è pronto
   function onOpenCvReady() {
     console.log('OpenCV.js is ready');
     startVideoProcessing();
   }
 
-  // Associa l'evento onRuntimeInitialized di OpenCV per assicurarsi che sia pronto
   let Module = {
     onRuntimeInitialized: onOpenCvReady
   };
