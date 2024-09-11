@@ -73,9 +73,11 @@
   
   let lastX = 0, lastY = 0, lastZ = -5;
   const smoothingFactor = 0.1;
-  const maxDepth = 10; // Define maximum depth range
+  const depthScale = 1; // Adjust this scale based on your environment
 
-  navigator.mediaDevices.getUserMedia({ video: true })
+  navigator.mediaDevices.getUserMedia({ 
+    video: { facingMode: { exact: "environment" } } 
+  })
     .then((stream) => {
       video.srcObject = stream;
 
@@ -120,8 +122,8 @@
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
 
-      // Estimate Z based on the number of points (e.g., fewer points could mean further away)
-      const zEstimate = Math.max(1, maxDepth - (points.length / 10));
+      // Estimate Z based on a constant or a heuristic (adjust based on your scene)
+      const zEstimate = depthScale; // Use a constant for now, or refine this based on more complex calculations
 
       // Apply smoothing
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
@@ -146,6 +148,7 @@
     requestAnimationFrame(processVideo);
   }
 </script>
+
 
 </body>
 </html>
