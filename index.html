@@ -8,6 +8,9 @@
   <!-- Three.js for 3D rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+  <!-- GLTFLoader for loading 3D models -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/loaders/GLTFLoader.js"></script>
+
   <!-- jsfeat library for feature detection and tracking -->
   <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
 
@@ -66,7 +69,7 @@
 
   // Set up video feed
   navigator.mediaDevices.getUserMedia({ 
-    video: true
+    video: { facingMode: { exact: "environment" } } 
   })
   .then((stream) => {
     video.srcObject = stream;
