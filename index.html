@@ -34,12 +34,10 @@
   </a-assets>
 
   <!-- Astronave Model -->
-  <a-entity id="astronave" position="0 0 0" gltf-model="#astro" scale="100 100 100"></a-entity>
+  <a-entity id="astronave" position="0 0 -5" gltf-model="#astro" scale="1 1 1"></a-entity>
 
   <!-- Camera for AR scene -->
-  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" 
-            cursor="fuse: false; rayOrigin: mouse;"
-            raycaster="objects: .clickable"></a-camera>
+  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
 </a-scene>
 
 <!-- Video Feed from Camera -->
@@ -110,6 +108,10 @@
 
       // Update position
       modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${lastZ}`);
+      
+      // Log values
+      console.log(`Updated Position: ${smoothedX} ${smoothedY} ${lastZ}`);
+      
       lastX = smoothedX;
       lastY = smoothedY;
     }
