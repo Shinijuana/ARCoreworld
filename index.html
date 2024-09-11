@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AR Astronave con SLAM</title>
-  
-  <!-- A-Frame for rendering the scene -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  
+
+  <!-- Three.js for 3D rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
   <!-- jsfeat library for feature detection and tracking -->
   <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
 
@@ -22,86 +22,78 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 0; /* Ensure canvas and video are behind the A-Frame scene */
+      z-index: 0; /* Ensure canvas and video are behind the Three.js scene */
     }
-    a-scene {
+    #webgl-canvas {
       position: absolute;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 1; /* Ensure the A-Frame scene is above the video and canvas */
-      overflow: hidden; /* Prevent scrollbars from appearing */
+      z-index: 1; /* Ensure the Three.js scene is above the video and canvas */
     }
   </style>
 </head>
-<body style="margin: 0; overflow: hidden;">
-
-<!-- A-Frame Scene -->
-<a-scene embedded 
-         renderer="colorManagement: true, physicallyCorrectLights" 
-         vr-mode-ui="enabled: false" 
-         device-orientation-permission-ui="enabled: false">
-    
-  <a-assets>
-      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
-  </a-assets>
-
-  <!-- Astronave Model -->
-  <a-entity id="astronave" position="0 0 -5" gltf-model="#astro" scale="1 1 1"></a-entity>
-
-  <!-- Camera for AR scene -->
-  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
-  
-</a-scene>
+<body>
 
 <!-- Video Feed from Camera -->
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
 
+<!-- WebGL Canvas for Three.js -->
+<canvas id="webgl-canvas"></canvas>
+
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
+  const webglCanvas = document.getElementById('webgl-canvas');
   const ctx = canvas.getContext('2d');
-  const modelEntity = document.getElementById('astronave');
-  
-  // Initialize jsfeat variables
-  const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
-  const corners = [];
-  for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-  
-  let lastX = 0, lastY = 0, lastZ = -5;
-  const smoothingFactor = 0.1;
-  const depthScale = 10; // Adjust this scale based on your environment
 
+  // Initialize Three.js
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ canvas: webglCanvas });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  // Load 3D Model
+  const loader = new THREE.GLTFLoader();
+  let model;
+  loader.load('ASTRONAVE.glb', (gltf) => {
+    model = gltf.scene;
+    model.scale.set(1, 1, 1);
+    scene.add(model);
+  });
+
+  // Set up video feed
   navigator.mediaDevices.getUserMedia({ 
-    video: { facingMode: { exact: "environment" } } 
+    video: true
   })
-    .then((stream) => {
-      video.srcObject = stream;
-
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        video.play();
-      });
-
-      video.addEventListener('play', () => {
-        processVideo();
-      });
-    })
-    .catch((error) => {
-      console.error('Error accessing camera: ', error);
+  .then((stream) => {
+    video.srcObject = stream;
+    video.addEventListener('loadedmetadata', () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      video.play();
     });
+    video.addEventListener('play', () => {
+      processVideo();
+    });
+  })
+  .catch((error) => {
+    console.error('Error accessing camera: ', error);
+  });
 
   function detectFeatures() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // Convert to grayscale
+    const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
     // Detect keypoints
+    const corners = [];
+    for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
     const count = jsfeat.yape06.detect(img_u8, corners, 100);
 
     const points = [];
@@ -117,29 +109,24 @@
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
+      // Convert 2D screen position to 3D world position
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
+      const z3D = 5; // Placeholder value, adjust based on your needs
 
-      // Estimate Z based on heuristic (e.g., average distance or depth)
-      const zEstimate = depthScale;
+      if (model) {
+        model.position.set(x3D, -y3D, -z3D);
+      }
 
-      // Apply smoothing
-      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
-
-      // Update position
-      modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-      
-      // Log values
-      console.log(`Updated Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
-      
-      lastX = smoothedX;
-      lastY = smoothedY;
-      lastZ = smoothedZ;
+      console.log(`Updated Position: ${x3D} ${-y3D} ${-z3D}`);
     }
   }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+  animate();
 
   function processVideo() {
     const points = detectFeatures();
