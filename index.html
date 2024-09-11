@@ -34,87 +34,45 @@
 </a-scene>
 
 <!-- Video Feed from Camera -->
-<video id="video" width="640" height="480" autoplay style="display: none;"></video>
-<canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+<video id="video" width="640" height="480" autoplay></video>
+<canvas id="canvas" width="640" height="480"></canvas>
 
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  const modelEntity = document.getElementById('astronave');
+  const ctx = canvas.getContext('2d');
 
-  // Start video stream and wait for metadata to load
-  navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-    video.srcObject = stream;
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then((stream) => {
+      video.srcObject = stream;
 
-    // Wait for video metadata to load (width, height, etc.)
-    video.addEventListener('loadedmetadata', () => {
-      video.play();
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      processVideo();  // Start video processing only after metadata is loaded
+      video.addEventListener('loadedmetadata', () => {
+        console.log('Video metadata loaded. Video dimensions:', video.videoWidth, video.videoHeight);
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        video.play();
+      });
+      
+      video.addEventListener('play', () => {
+        console.log('Video playing');
+        processVideo();
+      });
+    })
+    .catch((error) => {
+      console.error('Error accessing camera: ', error);
     });
-  }).catch((error) => {
-    console.error('Error accessing camera: ', error);
-  });
 
   function processVideo() {
-    const width = canvas.width;
-    const height = canvas.height;
-    const ctx = canvas.getContext('2d');
-    ctx.willReadFrequently = true;  // For better performance with getImageData
-    
-    // Setup jsfeat
-    const img_u8 = new jsfeat.matrix_t(width, height, jsfeat.U8_t | jsfeat.C1_t);
-    const corners = [];
-    for (let i = 0; i < width * height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+    console.log('Processing video frame');
 
-    function detectFeatures() {
-      if (width === 0 || height === 0) {
-        console.error("Video dimensions are zero");
-        return [];
-      }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      ctx.drawImage(video, 0, 0, width, height);
-      const imageData = ctx.getImageData(0, 0, width, height);
-
-      // Convert to grayscale
-      jsfeat.imgproc.grayscale(imageData.data, width, height, img_u8);
-
-      // Detect keypoints using jsfeat
-      const count = jsfeat.yape06.detect(img_u8, corners, 100);
-
-      // Filter good points
-      const points = [];
-      for (let i = 0; i < count; i++) {
-        points.push({ x: corners[i].x, y: corners[i].y });
-      }
-
-      return points;
-    }
-
-    function estimateCameraPose(points) {
-      if (points.length > 0) {
-        const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-        const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-        // Convert 2D screen position to 3D world position (adjust scaling as necessary)
-        const x3D = (avgX / width) * 10 - 5;
-        const y3D = (avgY / height) * 10 - 5;
-
-        // Update the model's position in the scene
-        modelEntity.setAttribute('position', `${x3D} ${y3D} -5`);
-      }
-    }
-
-    function track() {
-      const points = detectFeatures();
-      estimateCameraPose(points);
-      requestAnimationFrame(track);
-    }
-
-    track();
+    // For debugging, draw the video frame on the canvas
+    ctx.putImageData(imageData, 0, 0);
   }
 </script>
+
 
 </body>
 </html>
