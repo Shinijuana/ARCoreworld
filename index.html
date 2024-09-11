@@ -33,18 +33,7 @@
 <canvas id="canvasOutput" width="640" height="480"></canvas>
 
 <script type="text/javascript">
-  // Funzione per controllare se OpenCV è pronto
-  function checkOpenCvReady() {
-    if (cv && cv.Mat) {
-      console.log('OpenCV.js is ready.');
-      startVideoProcessing();
-    } else {
-      console.log('Waiting for OpenCV.js...');
-      setTimeout(checkOpenCvReady, 100);  // Riprova ogni 100 ms
-    }
-  }
-
-  // Funzione principale per processare il video e tracciare feature
+  // La funzione principale viene eseguita solo dopo l'inizializzazione di OpenCV
   function startVideoProcessing() {
     const video = document.getElementById('video');
     const canvasOutput = document.getElementById('canvasOutput');
@@ -60,7 +49,7 @@
       const gray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
       const cap = new cv.VideoCapture(video);
 
-      // Inizializza ORB senza parametri extra
+      // Inizializza ORB
       const detector = new cv.ORB();
       const matcher = new cv.BFMatcher();
 
@@ -126,8 +115,18 @@
     });
   }
 
-  // Avvia il controllo per OpenCV
-  checkOpenCvReady();
+  // Quando OpenCV.js è pronto, avvia la funzione principale
+  function onOpenCvReady() {
+    console.log('OpenCV.js is ready');
+    startVideoProcessing();
+  }
+
+  // Associa l'evento onRuntimeInitialized di OpenCV per assicurarsi che sia pronto
+  Module = {
+    onRuntimeInitialized: function() {
+      onOpenCvReady();
+    }
+  };
 </script>
 
 </body>
