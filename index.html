@@ -72,6 +72,7 @@
   
   let lastX = 0, lastY = 0, lastZ = -5;
   const smoothingFactor = 0.1;
+  const maxDepth = 10; // Define maximum depth range
 
   navigator.mediaDevices.getUserMedia({ video: true })
     .then((stream) => {
@@ -114,21 +115,27 @@
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
+      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
+
+      // Estimate Z based on the number of points (e.g., fewer points could mean further away)
+      const zEstimate = Math.max(1, maxDepth - (points.length / 10));
 
       // Apply smoothing
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
       // Update position
-      modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${lastZ}`);
+      modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
       
       // Log values
-      console.log(`Updated Position: ${smoothedX} ${smoothedY} ${lastZ}`);
+      console.log(`Updated Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
       
       lastX = smoothedX;
       lastY = smoothedY;
+      lastZ = smoothedZ;
     }
   }
 
@@ -138,6 +145,5 @@
     requestAnimationFrame(processVideo);
   }
 </script>
-
 </body>
 </html>
