@@ -1,64 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Astronave con SLAM</title>
-  
-  <!-- A-Frame for rendering the scene -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  
-  <!-- jsfeat library for feature detection and tracking -->
-  <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
-
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-    #video, #canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 0; /* Ensure canvas and video are behind the A-Frame scene */
-    }
-    a-scene {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1; /* Ensure the A-Frame scene is above the video and canvas */
-      overflow: hidden; /* Prevent scrollbars from appearing */
-    }
-  </style>
-</head>
-<body style="margin: 0; overflow: hidden;">
-
-<!-- A-Frame Scene -->
-<a-scene embedded 
-         renderer="colorManagement: true, physicallyCorrectLights" 
-         vr-mode-ui="enabled: false" 
-         device-orientation-permission-ui="enabled: false">
-    
-  <a-assets>
-      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
-  </a-assets>
-
-  <!-- Astronave Model -->
-  <a-entity id="astronave" position="0 0 -5" gltf-model="#astro" scale="1 1 1"></a-entity>
-
-  <!-- Camera for AR scene -->
-  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
-  
-</a-scene>
-
-<!-- Video Feed from Camera -->
-<video id="video" autoplay></video>
-<canvas id="canvas"></canvas>
-
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
@@ -72,7 +11,7 @@
   
   let lastX = 0, lastY = 0, lastZ = -5;
   const smoothingFactor = 0.1;
-  const maxDepth = 10; // Define maximum depth range
+  const depthScale = 1; // Adjust this scale based on your environment
 
   navigator.mediaDevices.getUserMedia({ video: true })
     .then((stream) => {
@@ -119,8 +58,8 @@
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
 
-      // Estimate Z based on the number of points (e.g., fewer points could mean further away)
-      const zEstimate = Math.max(1, maxDepth - (points.length / 10));
+      // Estimate Z based on a constant or a heuristic (adjust based on your scene)
+      const zEstimate = depthScale; // Use a constant for now, or refine this based on more complex calculations
 
       // Apply smoothing
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
@@ -145,5 +84,3 @@
     requestAnimationFrame(processVideo);
   }
 </script>
-</body>
-</html>
