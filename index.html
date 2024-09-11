@@ -29,14 +29,17 @@
 
   <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" 
-            cursor="fuse: false; rayOrigin: mouse;"></a-camera>
+            cursor="fuse: false; rayOrigin: mouse;"
+            raycaster="objects: .clickable"></a-camera>
 </a-scene>
 
 <!-- Video Feed from Camera -->
 <video id="video" width="640" height="480" autoplay style="display: none;"></video>
+<canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
 
 <script type="text/javascript">
   const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
   const modelEntity = document.getElementById('astronave');
 
   // Start video stream and wait for metadata to load
@@ -46,19 +49,19 @@
     // Wait for video metadata to load (width, height, etc.)
     video.addEventListener('loadedmetadata', () => {
       video.play();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       processVideo();  // Start video processing only after metadata is loaded
     });
+  }).catch((error) => {
+    console.error('Error accessing camera: ', error);
   });
 
   function processVideo() {
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-    
-    // Create canvas for processing
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    const width = canvas.width;
+    const height = canvas.height;
     const ctx = canvas.getContext('2d');
+    ctx.willReadFrequently = true;  // For better performance with getImageData
     
     // Setup jsfeat
     const img_u8 = new jsfeat.matrix_t(width, height, jsfeat.U8_t | jsfeat.C1_t);
@@ -66,7 +69,6 @@
     for (let i = 0; i < width * height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
 
     function detectFeatures() {
-      // Ensure video width and height are non-zero before proceeding
       if (width === 0 || height === 0) {
         console.error("Video dimensions are zero");
         return [];
@@ -91,7 +93,6 @@
     }
 
     function estimateCameraPose(points) {
-      // If enough points, calculate an average to simulate movement
       if (points.length > 0) {
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
         const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
