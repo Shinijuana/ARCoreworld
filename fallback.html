@@ -1,85 +1,120 @@
-<!-- fallback.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>AR World Tracking with Three.js and WebXR</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/VRButton.js"></script>
-    <script src="https://unpkg.com/@webxr-input-profiles/assets@1.0.0/dist/webxr-input-profiles.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/loaders/GLTFLoader.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Astronave con SLAM</title>
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://cdn.rawgit.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 </head>
-<body>
-    <script>
-        // Initialize scene, camera, and renderer
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+<body style="margin: 0; overflow: hidden;">
 
-        // Enable WebXR AR mode
-        document.body.appendChild(VRButton.createButton(renderer));
-        renderer.xr.enabled = true;
+<!-- Scena AR.js -->
+<a-scene embedded arjs 
+         renderer="colorManagement: true, physicallyCorrectLights" 
+         vr-mode-ui="enabled: false" 
+         device-orientation-permission-ui="enabled: false">
+    
+ <a-assets>
+      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
+    </a-assets>
 
-        // Load the GLB model
-        const loader = new THREE.GLTFLoader();
-        loader.load('ASTRONAVE.glb', (gltf) => {
-            const model = gltf.scene;
-            model.scale.set(1, 1, 1);  // Adjust scale as needed
-            scene.add(model);
-        }, undefined, (error) => {
-            console.error('An error occurred while loading the model:', error);
-        });
+    
+  <!-- Modello 3D della astronave -->
+  <a-entity id="astronave" position="0 0 0" gltf-model ="#astro" scale="1 1 1">
+  </a-entity>
 
-        // Handle AR session and hit test
-        let hitTestSource = null;
-        let hitTestSourceRequested = false;
+  <!-- Fotocamera per la scena AR -->
+  <a-entity camera></a-entity>
+</a-scene>
 
-        navigator.xr.requestSession('immersive-ar', {
-            requiredFeatures: ['hit-test']
-        }).then((xrSession) => {
-            renderer.xr.setSession(xrSession);
+<!-- Script OpenCV.js per il rilevamento di superfici -->
+<video id="video" width="640" height="480" autoplay></video>
+<canvas id="canvasOutput" width="640" height="480"></canvas>
 
-            xrSession.requestReferenceSpace('local').then((referenceSpace) => {
-                xrSession.requestHitTestSource({ space: referenceSpace }).then((source) => {
-                    hitTestSource = source;
-                    hitTestSourceRequested = true;
-                });
-            });
-        });
+<script type="text/javascript">
+  const video = document.getElementById('video');
+  const canvasOutput = document.getElementById('canvasOutput');
+  const ctx = canvasOutput.getContext('2d');
 
-        // Animation loop
-        function animate() {
-            renderer.setAnimationLoop(() => {
-                renderer.render(scene, camera);
+  let detector, matcher;
 
-                if (hitTestSourceRequested && hitTestSource) {
-                    const frame = renderer.xr.getSession().requestAnimationFrame(() => {});
-                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+  function onOpenCvReady() {
+    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      video.srcObject = stream;
+    });
 
-                    if (hitTestResults.length > 0) {
-                        const hitPose = hitTestResults[0].getPose(renderer.xr.getReferenceSpace());
-                        if (hitPose) {
-                            // Assuming there's a model added to the scene
-                            scene.children.forEach(child => {
-                                if (child.isMesh) {
-                                    child.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
-                                }
-                            });
-                        }
-                    }
-                }
-            });
+    video.addEventListener('play', () => {
+      const src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+      const prevGray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
+      const gray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
+      const cap = new cv.VideoCapture(video);
+
+      // Rilevatore ORB per rilevamento feature
+      detector = new cv.ORB();
+      matcher = new cv.BFMatcher();
+
+      let keypointsPrev = new cv.KeyPointVector();
+      let descriptorsPrev = new cv.Mat();
+
+      cap.read(src);
+      cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY);
+
+      // Rilevamento punti chiave iniziale
+      detector.detectAndCompute(prevGray, new cv.Mat(), keypointsPrev, descriptorsPrev);
+
+      function processVideo() {
+        cap.read(src);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+        // Rilevamento punti chiave corrente
+        let keypointsCurr = new cv.KeyPointVector();
+        let descriptorsCurr = new cv.Mat();
+        detector.detectAndCompute(gray, new cv.Mat(), keypointsCurr, descriptorsCurr);
+
+        // Matcher dei descrittori
+        let matches = new cv.DMatchVector();
+        matcher.match(descriptorsPrev, descriptorsCurr, matches);
+
+        // Traccia i punti sulla superficie rilevata
+        let matchedPoints = [];
+        for (let i = 0; i < matches.size(); i++) {
+          let match = matches.get(i);
+          let prevPoint = keypointsPrev.get(match.queryIdx).pt;
+          let currPoint = keypointsCurr.get(match.trainIdx).pt;
+          matchedPoints.push({ prev: prevPoint, curr: currPoint });
         }
-        animate();
 
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+        if (matchedPoints.length > 0) {
+          // Calcola la media dei punti per stimare una posizione nella scena
+          let avgX = matchedPoints.reduce((sum, p) => sum + p.curr.x, 0) / matchedPoints.length;
+          let avgY = matchedPoints.reduce((sum, p) => sum + p.curr.y, 0) / matchedPoints.length;
+
+          // Converti le coordinate del piano 2D in coordinate 3D della scena A-Frame
+          let x3D = (avgX / video.width) * 10 - 5;  // Scala e traslazione
+          let y3D = (avgY / video.height) * 10 - 5;
+
+          // Posiziona l'astronave nel punto calcolato
+          let astronave = document.getElementById('astronave');
+          astronave.setAttribute('position', `${x3D} ${y3D} -5`);
+        }
+
+        // Disegna i punti di tracking
+        cv.drawKeypoints(gray, keypointsCurr, src);
+        cv.imshow('canvasOutput', src);
+
+        // Aggiorna i punti chiave precedenti
+        keypointsPrev = keypointsCurr;
+        descriptorsPrev = descriptorsCurr;
+
+        requestAnimationFrame(processVideo);
+      }
+
+      processVideo();
+    });
+  }
+</script>
+
 </body>
 </html>
