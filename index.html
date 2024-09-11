@@ -12,30 +12,16 @@
   <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
 
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
     #video, #canvas {
       position: absolute;
       top: 0;
       left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 0; /* Ensure canvas and video are behind the A-Frame scene */
-    }
-    a-scene {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1; /* Ensure the A-Frame scene is above the video and canvas */
-      overflow: hidden; /* Prevent scrollbars from appearing */
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>
-<body>
+<body style="margin: 0; overflow: hidden;">
 
 <!-- A-Frame Scene -->
 <a-scene embedded 
@@ -48,10 +34,7 @@
   </a-assets>
 
   <!-- Astronave Model -->
-  <a-entity id="astronave" position="0 0 -5" gltf-model="#astro" scale="1 1 1"></a-entity>
-
-  <!-- Debug Box -->
-  <a-box position="0 0 -10" rotation="0 45 0" color="#4CC3D9"></a-box>
+  <a-entity id="astronave" position="0 0 0" gltf-model="#astro" scale="100 100 100"></a-entity>
 
   <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" 
@@ -70,30 +53,24 @@
   const modelEntity = document.getElementById('astronave');
   
   // Initialize jsfeat variables
-  function initializeJsfeat() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const width = canvas.width;
-    const height = canvas.height;
-    const img_u8 = new jsfeat.matrix_t(width, height, jsfeat.U8_t | jsfeat.C1_t);
-    const corners = [];
-    for (let i = 0; i < width * height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-    return { img_u8, corners, width, height };
-  }
-  const { img_u8, corners, width, height } = initializeJsfeat();
+  const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+  const corners = [];
+  for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+  
+  let lastX = 0, lastY = 0, lastZ = -5;
+  const smoothingFactor = 0.1;
 
   navigator.mediaDevices.getUserMedia({ video: true })
     .then((stream) => {
       video.srcObject = stream;
+
       video.addEventListener('loadedmetadata', () => {
-        console.log('Video metadata loaded. Video dimensions:', video.videoWidth, video.videoHeight);
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         video.play();
       });
 
       video.addEventListener('play', () => {
-        console.log('Video playing');
         processVideo();
       });
     })
@@ -102,18 +79,15 @@
     });
 
   function detectFeatures() {
-    console.log('Detecting features');
-
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // Convert to grayscale
-    jsfeat.imgproc.grayscale(imageData.data, width, height, img_u8);
+    jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
     // Detect keypoints
     const count = jsfeat.yape06.detect(img_u8, corners, 100);
 
-    // Collect detected points
     const points = [];
     for (let i = 0; i < count; i++) {
       points.push({ x: corners[i].x, y: corners[i].y });
@@ -123,45 +97,29 @@
   }
 
   function estimateCameraPose(points) {
-    console.log('Estimating camera pose');
-
     if (points.length > 0) {
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
 
-      // Update the model's position in the scene
-      modelEntity.setAttribute('position', `${x3D} ${y3D} -5`);
+      // Apply smoothing
+      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
+      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+
+      // Update position
+      modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${lastZ}`);
+      lastX = smoothedX;
+      lastY = smoothedY;
     }
   }
 
   function processVideo() {
-    console.log('Processing video frame');
-
     const points = detectFeatures();
-    console.log('Detected points:', points);
-
-    if (points.length > 0) {
-      estimateCameraPose(points);
-    } else {
-      console.log('No points detected.');
-    }
-
-    // Schedule next frame
+    estimateCameraPose(points);
     requestAnimationFrame(processVideo);
   }
-
-  // Adjust canvas size on window resize
-  window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    // Reinitialize jsfeat variables if needed
-    initializeJsfeat();
-  });
-
 </script>
 
 </body>
