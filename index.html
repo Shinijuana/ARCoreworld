@@ -25,7 +25,10 @@
   </a-assets>
 
   <!-- Astronave Model -->
-  <a-entity id="astronave" position="0 0 0" gltf-model="#astro" scale="100 100 100"></a-entity>
+  <a-entity id="astronave" position="0 0 -5" gltf-model="#astro" scale="1 1 1"></a-entity>
+
+  <!-- Add a debug box to verify scene visibility -->
+  <a-box position="0 0 -10" rotation="0 45 0" color="#4CC3D9"></a-box>
 
   <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" 
@@ -107,22 +110,21 @@
     }
   }
 
- function processVideo() {
-  console.log('Processing video frame');
+  function processVideo() {
+    console.log('Processing video frame');
 
-  const points = detectFeatures();
-  console.log('Detected points:', points);
+    const points = detectFeatures();
+    console.log('Detected points:', points);
 
-  if (points.length > 0) {
-    estimateCameraPose(points);
-  } else {
-    console.log('No points detected.');
+    if (points.length > 0) {
+      estimateCameraPose(points);
+    } else {
+      console.log('No points detected.');
+    }
+
+    // Schedule next frame
+    requestAnimationFrame(processVideo);
   }
-
-  // Schedule next frame
-  requestAnimationFrame(processVideo);
-}
-
 </script>
 
 </body>
