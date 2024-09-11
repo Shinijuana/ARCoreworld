@@ -44,6 +44,7 @@
     });
 
     video.addEventListener('play', () => {
+      // Usa cv.CV_8UC4 per la matrice src (4 canali)
       const src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
       const prevGray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
       const gray = new cv.Mat(video.height, video.width, cv.CV_8UC1);
@@ -56,6 +57,7 @@
       let keypointsPrev = new cv.KeyPointVector();
       let descriptorsPrev = new cv.Mat();
 
+      // Legge il frame in src e lo converte in scala di grigi
       cap.read(src);
       cv.cvtColor(src, prevGray, cv.COLOR_RGBA2GRAY);
 
@@ -63,7 +65,10 @@
       detector.detectAndCompute(prevGray, new cv.Mat(), keypointsPrev, descriptorsPrev);
 
       function processVideo() {
+        // Legge il frame in src
         cap.read(src);
+
+        // Converte in scala di grigi per l'elaborazione
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
         // Rilevamento punti chiave corrente
