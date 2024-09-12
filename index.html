@@ -118,37 +118,43 @@ function initializeApp() {
   });
 
   function detectFeatures() {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    const src = cv.matFromImageData(imageData);
-    const gray = new cv.Mat();
-    const corners = new cv.Mat();
+  const src = cv.matFromImageData(imageData);
+  const gray = new cv.Mat();
+  const corners = new cv.Mat();
 
-    // Converti l'immagine in scala di grigi
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  // Converti l'immagine in scala di grigi
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    if (gray.empty()) {
-      console.error('L\'immagine in scala di grigi è vuota!');
-      src.delete();
-      gray.delete();
-      corners.delete();
-      return [];
-    }
-
-    // Usa goodFeaturesToTrack per rilevare i punti
-    cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
-    console.log(`Numero di punti rilevati: ${corners.rows}`);
-
-    const points = [];
-    for (let i = 0; i < corners.rows; i++) {
-      const pt = corners.row(i).data32F;
-      points.push({ x: pt[0], y: pt[1] });
-    }
-
-    src.delete(); gray.delete(); corners.delete();
-    return points;
+  if (gray.empty()) {
+    console.error('L\'immagine in scala di grigi è vuota!');
+    src.delete();
+    gray.delete();
+    corners.delete();
+    return [];
   }
+
+  // Usa goodFeaturesToTrack per rilevare i punti
+  // Modifica i parametri per rendere il numero di punti più fitto
+  const maxCorners = 1000;  // Aumenta il numero massimo di punti
+  const qualityLevel = 0.01; // Mantieni la qualità bassa per rilevare più punti
+  const minDistance = 5;    // Riduci la distanza minima tra i punti
+
+  cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
+  console.log(`Numero di punti rilevati: ${corners.rows}`);
+
+  const points = [];
+  for (let i = 0; i < corners.rows; i++) {
+    const pt = corners.row(i).data32F;
+    points.push({ x: pt[0], y: pt[1] });
+  }
+
+  src.delete(); gray.delete(); corners.delete();
+  return points;
+}
+
 
   function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
