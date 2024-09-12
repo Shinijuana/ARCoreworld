@@ -7,9 +7,9 @@
   
   <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-
-  <!-- OpenCV.js for image processing -->
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
+  
+  <!-- OpenCV.js library -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()" onerror="onOpenCvError()"></script>
 
   <style>
     body {
@@ -52,55 +52,38 @@
 
   <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
-
-  <!-- Plane to visualize estimated plane -->
-  <a-plane id="plane" color="blue" rotation="-90 0 0" width="10" height="10" position="0 0 -5"></a-plane>
+  
 </a-scene>
 
 <!-- Video Feed from Camera -->
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
 
-<!-- Script to handle the video and feature detection -->
 <script type="text/javascript">
-  let isOpenCvReady = false;
+  let cvLoaded = false;
 
   function onOpenCvReady() {
+    cvLoaded = true;
     console.log('OpenCV.js is ready.');
-    isOpenCvReady = true;
-    startApp();
+    initializeApp();
   }
 
-  function startApp() {
-    if (!isOpenCvReady) {
-      console.error('OpenCV.js not loaded.');
-      return;
-    }
+  function onOpenCvError() {
+    console.error('OpenCV.js failed to load.');
+  }
 
+  function initializeApp() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const camera = document.getElementById('ar-camera');
 
-    // Initialize OpenCV
-    let srcMat, grayMat;
-
-    // Check if cv is defined
-    if (typeof cv === 'undefined') {
-      console.error('OpenCV.js not available');
-      return;
-    }
-
-    srcMat = new cv.Mat();
-    grayMat = new cv.Mat();
-
     let lastX = 0, lastY = 0, lastZ = 0;
     const smoothingFactor = 0.1;
     const depthScale = 1;
 
-    // Request access to the camera
     navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: { exact: "environment" } }
+      video: { facingMode: true }
     })
     .then((stream) => {
       video.srcObject = stream;
@@ -108,10 +91,8 @@
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         video.play();
-        console.log('Video playing with dimensions:', video.videoWidth, video.videoHeight);
       });
       video.addEventListener('play', () => {
-        console.log('Video is playing');
         processVideo();
       });
     })
@@ -120,44 +101,31 @@
     });
 
     function detectFeatures() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        // Convert image data to OpenCV Mat
-        srcMat.delete(); // Clean up previous Mat to avoid memory leaks
-        grayMat.delete(); // Clean up previous Mat to avoid memory leaks
-        srcMat = cv.matFromImageData(imageData);
-        cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+      const src = cv.matFromImageData(imageData);
+      const gray = new cv.Mat();
+      const corners = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
 
-        // Detect features using OpenCV
-        let keypoints = new cv.KeyPointVector();
-        let detector = new cv.ORB();
-        detector.detect(grayMat, keypoints);
+      console.log(`Numero di punti rilevati: ${corners.rows}`);
 
-        // Draw keypoints on canvas
-        let outputMat = new cv.Mat();
-        cv.drawKeypoints(srcMat, keypoints, outputMat);
-        cv.imshow(canvas, outputMat);
-
-        const count = keypoints.size();
-        console.log(`Numero di punti rilevati: ${count}`);
-        if (count > 0) {
-          const points = [];
-          for (let i = 0; i < count; i++) {
-            let kp = keypoints.get(i);
-            points.push({ x: kp.pt.x, y: kp.pt.y });
-          }
-          console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
-          return points;
-        } else {
-          console.log('Nessun punto rilevato.');
-          return [];
+      if (corners.rows > 0) {
+        const points = [];
+        for (let i = 0; i < corners.rows; i++) {
+          const pt = corners.row(i).data32F;
+          points.push({ x: pt[0], y: pt[1] });
         }
+        console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
+        return points;
       } else {
-        console.log('Il video non è pronto.');
+        console.log('Nessun punto rilevato.');
         return [];
       }
+
+      src.delete(); gray.delete(); corners.delete();
     }
 
     function estimateCameraPose(points) {
@@ -201,13 +169,6 @@
         B = (sumY - A * sumX) / n;
         C = -A * canvas.width / 2 + B * canvas.height / 2;
 
-        // Update the plane position and size
-        const plane = document.getElementById('plane');
-        plane.setAttribute('position', `0 ${-C / 1000} -5`);  // Adjust this position as needed
-        plane.setAttribute('rotation', `-90 0 0`);  // Rotate to be horizontal
-        plane.setAttribute('width', `${canvas.width / 100}px`);
-        plane.setAttribute('height', `${canvas.height / 100}px`);
-
         console.log(`Piano stimato: A=${A}, B=${B}, C=${C}`);
         return { A, B, C };
       } else {
@@ -217,13 +178,9 @@
     }
 
     function processVideo() {
-      try {
-        const points = detectFeatures();
-        estimateCameraPose(points);
-        estimatePlane(points);
-      } catch (e) {
-        console.error('Errore nel processamento del video:', e);
-      }
+      const points = detectFeatures();
+      estimateCameraPose(points);
+      estimatePlane(points);
       requestAnimationFrame(processVideo);
     }
   }
