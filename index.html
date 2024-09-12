@@ -138,8 +138,8 @@ function initializeApp() {
 
   // Usa goodFeaturesToTrack per rilevare i punti
   // Modifica i parametri per rendere il numero di punti più fitto
-  const maxCorners = 1000;  // Aumenta il numero massimo di punti
-  const qualityLevel = 0.01; // Mantieni la qualità bassa per rilevare più punti
+  const maxCorners = 10000;  // Aumenta il numero massimo di punti
+  const qualityLevel = 0.001; // Mantieni la qualità bassa per rilevare più punti
   const minDistance = 5;    // Riduci la distanza minima tra i punti
 
   cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
@@ -227,7 +227,7 @@ function initializeApp() {
   }
 
   function anchorAstronave(points) {
-    if (points.length > 20) {
+    if (points.length > 500) {
       document.addEventListener('click', function () {
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
         const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
