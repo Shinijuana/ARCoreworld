@@ -185,6 +185,11 @@
       // I coefficienti del piano
       let planeCoefficients = matX.data32F;
 
+      if (planeCoefficients.length < 4) {
+        console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
+        return null;
+      }
+
       console.log(`Piano 3D stimato: A=${planeCoefficients[0]}, B=${planeCoefficients[1]}, C=${planeCoefficients[2]}, D=${planeCoefficients[3]}`);
 
       matA.delete();
@@ -251,22 +256,24 @@
         // Calcola il piano 3D usando i punti
         const planeCoefficients = estimate3DPlane(points);
 
-        // Anchora il piano nella scena
-        if (!isPlaneAnchored && plane) {
-          const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-          const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+        if (planeCoefficients) {
+          // Anchora il piano nella scena
+          if (!isPlaneAnchored) {
+            const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+            const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-          const newX = (avgX / canvas.width) * 10 - 5;
-          const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-          const newZ = 0;  // Imposta Z come fisso
+            const newX = (avgX / canvas.width) * 10 - 5;
+            const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
+            const newZ = 0;  // Imposta Z come fisso
 
-          // Imposta la posizione del piano in A-Frame
-          plane.setAttribute('position', `${newX} ${newY} ${newZ}`);
-          plane.setAttribute('rotation', '-90 0 0');  // Ruota il piano per essere orizzontale
+            // Imposta la posizione del piano in A-Frame
+            plane.setAttribute('position', `${newX} ${newY} ${newZ}`);
+            plane.setAttribute('rotation', '-90 0 0');  // Ruota il piano per essere orizzontale
 
-          console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
+            console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
 
-          isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
+            isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
+          }
         }
       }
     }
@@ -279,6 +286,7 @@
       requestAnimationFrame(processVideo);
     }
   }
+
 </script>
 
 </body>
