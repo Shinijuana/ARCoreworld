@@ -80,7 +80,7 @@
 
     // Request access to the camera
     navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: true } // Changed to facingMode: true
+      video: { facingMode: true }
     })
     .then((stream) => {
       video.srcObject = stream;
@@ -151,10 +151,39 @@
       }
     }
 
+    // Function to estimate a plane based on detected points
+    function estimatePlane(points) {
+      if (points.length > 2) {
+        // Use a simple planar fit algorithm (least squares fit for 2D points)
+        let A = 0, B = 0, C = 0;
+        let sumX = 0, sumY = 0;
+        let sumXY = 0, sumXX = 0;
+
+        points.forEach(p => {
+          sumX += p.x;
+          sumY += p.y;
+          sumXY += p.x * p.y;
+          sumXX += p.x * p.x;
+        });
+
+        const n = points.length;
+        A = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+        B = (sumY - A * sumX) / n;
+        C = -A * canvas.width / 2 + B * canvas.height / 2;
+
+        console.log(`Piano stimato: A=${A}, B=${B}, C=${C}`);
+        return { A, B, C };
+      } else {
+        console.log("Non ci sono abbastanza punti per stimare un piano.");
+        return null;
+      }
+    }
+
     // Main function to process video frames
     function processVideo() {
       const points = detectFeatures();
       estimateCameraPose(points);
+      estimatePlane(points);
       requestAnimationFrame(processVideo);
     }
   });
