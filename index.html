@@ -60,143 +60,141 @@
 <canvas id="canvas"></canvas>
 
 <script type="text/javascript">
-  let cvLoaded = false;
-  let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
+ let cvLoaded = false;
+let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
 
-  // Coordinate fisse dell'astronave nel mondo 3D
-  let anchorX = 0, anchorY = 0, anchorZ = -10;
+// Coordinate fisse dell'astronave nel mondo 3D
+let anchorX = 0, anchorY = 0, anchorZ = -10;
 
-  function onOpenCvReady() {
-    cvLoaded = true;
-    console.log('OpenCV.js is ready.');
-    initializeApp();
-  }
+function onOpenCvReady() {
+  cvLoaded = true;
+  console.log('OpenCV.js is ready.');
+  initializeApp();
+}
 
-  function onOpenCvError() {
-    console.error('OpenCV.js failed to load.');
-  }
+function onOpenCvError() {
+  console.error('OpenCV.js failed to load.');
+}
 
-  function initializeApp() {
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const camera = document.getElementById('ar-camera');
-    const astronave = document.getElementById('astronave');
+function initializeApp() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const camera = document.getElementById('ar-camera');
+  const astronave = document.getElementById('astronave');
 
-    let lastX = 0, lastY = 0, lastZ = 0;
-    const smoothingFactor = 0.5;  // Aumentato il fattore di smussamento per maggiore reattività
-    const depthScale = 10;        // Valore di scala per la stima della profondità
+  let lastX = 0, lastY = 0, lastZ = 0;
+  const smoothingFactor = 0.1;
+  const depthScale = 1;
 
-    navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: true }
-    })
-    .then((stream) => {
-      video.srcObject = stream;
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        video.play();
-      });
-      video.addEventListener('play', () => {
-        processVideo();
-      });
-    })
-    .catch((error) => {
-      console.error('Errore nell\'accesso alla fotocamera: ', error);
+  navigator.mediaDevices.getUserMedia({ 
+    video: { facingMode: true }
+  })
+  .then((stream) => {
+    video.srcObject = stream;
+    video.addEventListener('loadedmetadata', () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      video.play();
     });
+    video.addEventListener('play', () => {
+      processVideo();
+    });
+  })
+  .catch((error) => {
+    console.error('Errore nell\'accesso alla fotocamera: ', error);
+  });
 
-    function detectFeatures() {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  function detectFeatures() {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      const src = cv.matFromImageData(imageData);
-      const gray = new cv.Mat();
-      const corners = new cv.Mat();
+    const src = cv.matFromImageData(imageData);
+    const gray = new cv.Mat();
+    const corners = new cv.Mat();
 
-      // Converti l'immagine in scala di grigi
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    // Converti l'immagine in scala di grigi
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-      // Ridimensiona l'immagine per migliorare le prestazioni
-      cv.resize(gray, gray, new cv.Size(video.videoWidth / 2, video.videoHeight / 2));
-
-      // Verifica che la matrice 'gray' sia valida prima di procedere
-      if (gray.empty()) {
-        console.error('L\'immagine in scala di grigi è vuota!');
-        src.delete();
-        gray.delete();
-        corners.delete();
-        return [];
-      }
-
-      // Usa goodFeaturesToTrack per rilevare i punti, con parametri ottimizzati
-      cv.goodFeaturesToTrack(gray, corners, 1000, 0.01, 5);
-      console.log(`Numero di punti rilevati: ${corners.rows}`);
-
-      if (corners.rows > 0) {
-        const points = [];
-        for (let i = 0; i < corners.rows; i++) {
-          const pt = corners.row(i).data32F;
-          points.push({ x: pt[0], y: pt[1] });
-        }
-        src.delete(); gray.delete(); corners.delete();
-        return points;
-      } else {
-        src.delete(); gray.delete(); corners.delete();
-        return [];
-      }
+    if (gray.empty()) {
+      console.error('L\'immagine in scala di grigi è vuota!');
+      src.delete();
+      gray.delete();
+      corners.delete();
+      return [];
     }
 
-    function estimateCameraPose(points) {
-      if (points.length > 0) {
-        const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-        const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    // Usa goodFeaturesToTrack per rilevare i punti
+    cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
+    console.log(`Numero di punti rilevati: ${corners.rows}`);
 
-        // Calcolo della varianza per stimare la profondità (Z)
-        const varianceX = points.reduce((sum, p) => sum + Math.pow(p.x - avgX, 2), 0) / points.length;
-        const varianceY = points.reduce((sum, p) => sum + Math.pow(p.y - avgY, 2), 0) / points.length;
-
-        // Stima della profondità basata sulla varianza dei punti
-        const zEstimate = depthScale / Math.sqrt(varianceX + varianceY + 1);
-
-        // Calcolo delle coordinate 3D per X e Y
-        const x3D = (avgX / canvas.width) * 10 - 5;
-        const y3D = (avgY / canvas.height) * 10 - 5;
-
-        // Smussamento per evitare salti bruschi
-        const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-        const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-        const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
-
-        // Aggiorna la posizione della camera
-        camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-        console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
-
-        lastX = smoothedX;
-        lastY = smoothedY;
-        lastZ = smoothedZ;
-      } else {
-        console.log("Nessun punto rilevato.");
+    if (corners.rows > 0) {
+      const points = [];
+      for (let i = 0; i < corners.rows; i++) {
+        const pt = corners.row(i).data32F;
+        points.push({ x: pt[0], y: pt[1] });
       }
-    }
-
-    // La funzione per ancorare l'astronave sarà eseguita una sola volta
-    function anchorAstronave() {
-      if (!isPlaneAnchored) {
-        astronave.setAttribute('position', `${anchorX} ${anchorY} ${anchorZ}`);
-        console.log(`Astronave ancorata a: X=${anchorX}, Y=${anchorY}, Z=${anchorZ}`);
-        isPlaneAnchored = true;
-      }
-    }
-
-    function processVideo() {
-      const points = detectFeatures();
-      if (!isPlaneAnchored) {
-        anchorAstronave();  // L'ancoraggio avviene solo una volta
-      }
-      estimateCameraPose(points); // Aggiorniamo la posizione della camera
-      requestAnimationFrame(processVideo);
+      console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
+      src.delete(); gray.delete(); corners.delete();
+      return points;
+    } else {
+      console.log('Nessun punto rilevato.');
+      src.delete(); gray.delete(); corners.delete();
+      return [];
     }
   }
+
+  function estimateCameraPose(points) {
+    if (points.length > 0) {
+      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+      // Calcolo della posizione 3D stimata basata sui punti rilevati
+      const x3D = (avgX / canvas.width) * 10 - 5;
+      const y3D = (avgY / canvas.height) * 10 - 5;
+      const zEstimate = depthScale;
+
+      // Smussamento per evitare salti bruschi
+      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
+      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
+
+      // Moltiplica i valori per un fattore di 10
+      const amplifiedX = smoothedX * 10;
+      const amplifiedY = smoothedY * 10;
+      const amplifiedZ = smoothedZ * 10;
+
+      // Aggiornamento della posizione della camera
+      camera.setAttribute('position', `${amplifiedX} ${amplifiedY} ${amplifiedZ}`);
+      console.log(`Posizione della camera aggiornata: X=${amplifiedX}, Y=${amplifiedY}, Z=${amplifiedZ}`);
+
+      lastX = smoothedX;
+      lastY = smoothedY;
+      lastZ = smoothedZ;
+    } else {
+      console.log("Nessun punto rilevato.");
+    }
+  }
+
+  // La funzione per ancorare l'astronave sarà eseguita una sola volta
+  function anchorAstronave() {
+    if (!isPlaneAnchored) {
+      astronave.setAttribute('position', `${anchorX} ${anchorY} ${anchorZ}`);
+      console.log(`Astronave ancorata a: X=${anchorX}, Y=${anchorY}, Z=${anchorZ}`);
+      isPlaneAnchored = true;
+    }
+  }
+
+  function processVideo() {
+    const points = detectFeatures();
+    if (!isPlaneAnchored) {
+      anchorAstronave();  // L'ancoraggio avviene solo una volta
+    }
+    estimateCameraPose(points); // Aggiorniamo la posizione della camera
+    requestAnimationFrame(processVideo);
+  }
+}
+
 </script>
 
 </body>
