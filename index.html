@@ -51,7 +51,7 @@
   <a-entity id="astronave" position="0 0 -10" gltf-model="#astro" scale="1 1 1"></a-entity>
 
   <!-- Camera for AR scene -->
-  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
+  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" class="clickable"></a-camera>
   
 </a-scene>
 
@@ -176,10 +176,20 @@ function initializeApp() {
 
   // La funzione per ancorare l'astronave sarà eseguita solo quando viene rilevato un piano
   function anchorAstronave(points) {
-    if (!isPlaneAnchored && points.length > 20) { // Ad esempio, richiedi almeno 20 punti per il piano
-      astronave.setAttribute('position', `${anchorX} ${anchorY} ${anchorZ}`);
-      console.log(`Astronave ancorata a: X=${anchorX}, Y=${anchorY}, Z=${anchorZ}`);
-      isPlaneAnchored = true;
+    if (points.length > 1000) { // Ad esempio, richiedi almeno 20 punti per il piano
+      // Cambia l'ancoraggio dell'astronave al tocco
+      document.addEventListener('click', function () {
+        const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+        const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+        const avgZ = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+
+        const newX = (avgX / canvas.width) * 10 - 5;
+        const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);  // Y non può scendere sotto 0
+        const newZ = (avgZ / canvas.width) * 10 - 5;
+
+        astronave.setAttribute('position', `${newX * 10} ${newY * 10} ${newZ * 10}`);
+        console.log(`Astronave spostata a: X=${newX * 10}, Y=${newY * 10}, Z=${newZ * 10}`);
+      });
     }
   }
 
