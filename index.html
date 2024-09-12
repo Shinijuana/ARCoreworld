@@ -9,7 +9,7 @@
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   
   <!-- OpenCV.js library -->
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()" onerror="onOpenCvError()"></script>
 
   <style>
     body {
@@ -61,21 +61,22 @@
 
 <script type="text/javascript">
   let cvLoaded = false;
+
   function onOpenCvReady() {
     cvLoaded = true;
     console.log('OpenCV.js is ready.');
+    initializeApp();
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function onOpenCvError() {
+    console.error('OpenCV.js failed to load.');
+  }
+
+  function initializeApp() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const camera = document.getElementById('ar-camera');
-
-    if (!cvLoaded) {
-      console.error('OpenCV.js not loaded');
-      return;
-    }
 
     let lastX = 0, lastY = 0, lastZ = 0;
     const smoothingFactor = 0.1;
@@ -106,7 +107,6 @@
       const src = cv.matFromImageData(imageData);
       const gray = new cv.Mat();
       const corners = new cv.Mat();
-      const dst = new cv.Mat();
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
       cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
 
@@ -125,7 +125,7 @@
         return [];
       }
 
-      src.delete(); gray.delete(); corners.delete(); dst.delete();
+      src.delete(); gray.delete(); corners.delete();
     }
 
     function estimateCameraPose(points) {
@@ -183,7 +183,7 @@
       estimatePlane(points);
       requestAnimationFrame(processVideo);
     }
-  });
+  }
 </script>
 
 </body>
