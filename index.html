@@ -158,6 +158,12 @@
     }
 
     function estimate3DPlane(points2D) {
+      // Assicurati di avere abbastanza punti
+      if (points2D.length < 3) {
+        console.error('Non ci sono abbastanza punti per stimare un piano 3D.');
+        return null;
+      }
+
       // Converti i punti 2D in punti 3D
       const points3D = points2D.map(p => ({
         x: (p.x / canvas.width) * 10 - 5,
@@ -180,22 +186,32 @@
 
       // Calcola il piano usando il metodo dei minimi quadrati
       let matX = new cv.Mat();
-      cv.solve(matA, matB, matX, cv.DECOMP_SVD);
+      try {
+        cv.solve(matA, matB, matX, cv.DECOMP_SVD);
+      } catch (error) {
+        console.error('Errore nel calcolo dei coefficienti del piano:', error);
+        matA.delete();
+        matB.delete();
+        matX.delete();
+        return null;
+      }
 
       // I coefficienti del piano
       let planeCoefficients = matX.data32F;
 
       if (planeCoefficients.length < 4) {
         console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
+        matA.delete();
+        matB.delete();
+        matX.delete();
         return null;
       }
-
-      console.log(`Piano 3D stimato: A=${planeCoefficients[0]}, B=${planeCoefficients[1]}, C=${planeCoefficients[2]}, D=${planeCoefficients[3]}`);
 
       matA.delete();
       matB.delete();
       matX.delete();
 
+      // Restituisci i coefficienti del piano
       return {
         A: planeCoefficients[0],
         B: planeCoefficients[1],
@@ -266,7 +282,7 @@
             const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
             const newZ = 0;  // Imposta Z come fisso
 
-            // Imposta la posizione del piano in A-Frame
+            // Imposta la posizione e la rotazione del piano in A-Frame
             plane.setAttribute('position', `${newX} ${newY} ${newZ}`);
             plane.setAttribute('rotation', '-90 0 0');  // Ruota il piano per essere orizzontale
 
@@ -286,7 +302,6 @@
       requestAnimationFrame(processVideo);
     }
   }
-
 </script>
 
 </body>
