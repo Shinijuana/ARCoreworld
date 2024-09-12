@@ -150,51 +150,58 @@ function initializeApp() {
     return points;
   }
 
-  function drawDebug(points, plane) {
-    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-    debugCtx.strokeStyle = 'red';
-    debugCtx.fillStyle = 'red';
-    debugCtx.lineWidth = 2;
-
-    // Disegna i punti
+  function estimatePlane(points) {
+  if (points.length > 2) {
+    const A = [];
+    const B = [];
+    
     points.forEach(p => {
-      debugCtx.beginPath();
-      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-      debugCtx.fill();
+      const x = (p.x / canvas.width) * 2 - 1;
+      const y = (p.y / canvas.height) * 2 - 1;
+      A.push([x, y, 1]);
+      B.push([1]);
     });
 
-    // Disegna il piano stimato, se esiste
-    if (plane) {
-      debugCtx.strokeStyle = 'blue';
-      debugCtx.beginPath();
-      debugCtx.moveTo(0, plane.intercept);
-      debugCtx.lineTo(canvas.width, plane.slope * canvas.width + plane.intercept);
-      debugCtx.stroke();
-    }
+    const A_matrix = new cv.Mat(A, cv.CV_64F);
+    const B_matrix = new cv.Mat(B, cv.CV_64F);
+
+    // Risolviamo Ax = B
+    const plane = cv.solve(A_matrix, B_matrix, cv.DECOMP_SVD);
+    const [a, b, c] = plane.data64F;
+    
+    console.log(`Piano stimato: A=${a}, B=${b}, C=${c}`);
+    return { a, b, c };
+  } else {
+    console.log("Non ci sono abbastanza punti per stimare un piano.");
+    return null;
   }
+}
 
-  function estimatePlane(points) {
-    if (points.length > 2) {
-      let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-      const n = points.length;
+function drawDebug(points, plane) {
+  debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+  debugCtx.strokeStyle = 'red';
+  debugCtx.fillStyle = 'red';
+  debugCtx.lineWidth = 2;
 
-      points.forEach(p => {
-        sumX += p.x;
-        sumY += p.y;
-        sumXY += p.x * p.y;
-        sumXX += p.x * p.x;
-      });
+  // Disegna i punti
+  points.forEach(p => {
+    debugCtx.beginPath();
+    debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+    debugCtx.fill();
+  });
 
-      const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-      const intercept = (sumY - slope * sumX) / n;
-
-      console.log(`Piano stimato: Pendio=${slope}, Intercetta=${intercept}`);
-      return { slope, intercept };
-    } else {
-      console.log("Non ci sono abbastanza punti per stimare un piano.");
-      return null;
-    }
+  // Disegna il piano stimato, se esiste
+  if (plane) {
+    debugCtx.strokeStyle = 'blue';
+    debugCtx.beginPath();
+    
+    // Esempio di come disegnare un piano 2D (si assume che il piano sia orizzontale)
+    debugCtx.moveTo(0, -(plane.a * 0 + plane.c) / plane.b);
+    debugCtx.lineTo(canvas.width, -(plane.a * canvas.width + plane.c) / plane.b);
+    debugCtx.stroke();
   }
+}
+
 
   function estimateCameraPose(points) {
     if (points.length > 0) {
