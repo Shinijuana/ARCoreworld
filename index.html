@@ -108,8 +108,10 @@
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         video.play();
+        console.log('Video playing with dimensions:', video.videoWidth, video.videoHeight);
       });
       video.addEventListener('play', () => {
+        console.log('Video is playing');
         processVideo();
       });
     })
@@ -118,37 +120,42 @@
     });
 
     function detectFeatures() {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // Convert image data to OpenCV Mat
-      srcMat.delete(); // Clean up previous Mat to avoid memory leaks
-      grayMat.delete(); // Clean up previous Mat to avoid memory leaks
-      srcMat = cv.matFromImageData(imageData);
-      cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+        // Convert image data to OpenCV Mat
+        srcMat.delete(); // Clean up previous Mat to avoid memory leaks
+        grayMat.delete(); // Clean up previous Mat to avoid memory leaks
+        srcMat = cv.matFromImageData(imageData);
+        cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
 
-      // Detect features using OpenCV
-      let keypoints = new cv.KeyPointVector();
-      let detector = new cv.ORB();
-      detector.detect(grayMat, keypoints);
+        // Detect features using OpenCV
+        let keypoints = new cv.KeyPointVector();
+        let detector = new cv.ORB();
+        detector.detect(grayMat, keypoints);
 
-      // Draw keypoints on canvas
-      let outputMat = new cv.Mat();
-      cv.drawKeypoints(srcMat, keypoints, outputMat);
-      cv.imshow(canvas, outputMat);
+        // Draw keypoints on canvas
+        let outputMat = new cv.Mat();
+        cv.drawKeypoints(srcMat, keypoints, outputMat);
+        cv.imshow(canvas, outputMat);
 
-      const count = keypoints.size();
-      console.log(`Numero di punti rilevati: ${count}`);
-      if (count > 0) {
-        const points = [];
-        for (let i = 0; i < count; i++) {
-          let kp = keypoints.get(i);
-          points.push({ x: kp.pt.x, y: kp.pt.y });
+        const count = keypoints.size();
+        console.log(`Numero di punti rilevati: ${count}`);
+        if (count > 0) {
+          const points = [];
+          for (let i = 0; i < count; i++) {
+            let kp = keypoints.get(i);
+            points.push({ x: kp.pt.x, y: kp.pt.y });
+          }
+          console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
+          return points;
+        } else {
+          console.log('Nessun punto rilevato.');
+          return [];
         }
-        console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
-        return points;
       } else {
-        console.log('Nessun punto rilevato.');
+        console.log('Il video non è pronto.');
         return [];
       }
     }
@@ -198,8 +205,8 @@
         const plane = document.getElementById('plane');
         plane.setAttribute('position', `0 ${-C / 1000} -5`);  // Adjust this position as needed
         plane.setAttribute('rotation', `-90 0 0`);  // Rotate to be horizontal
-        plane.setAttribute('width', `${canvas.width / 100}`);  // Adjust width as needed
-        plane.setAttribute('height', `${canvas.height / 100}`);  // Adjust height as needed
+        plane.setAttribute('width', `${canvas.width / 100}px`);
+        plane.setAttribute('height', `${canvas.height / 100}px`);
 
         console.log(`Piano stimato: A=${A}, B=${B}, C=${C}`);
         return { A, B, C };
