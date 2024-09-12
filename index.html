@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Astronave con SLAM Migliorato</title>
+  <title>AR Astronave con SLAM</title>
   
   <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
@@ -23,7 +23,6 @@
       width: 100vw;
       height: 100vh;
       z-index: 0;
-      object-fit: cover; /* Ensure the video covers the screen properly */
     }
     a-scene {
       position: absolute;
@@ -31,16 +30,12 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 1;  /* Ensure the A-Frame scene is on top */
+      z-index: 1;
       overflow: hidden;
     }
   </style>
 </head>
 <body style="margin: 0; overflow: hidden;">
-
-<!-- Video Feed from Camera -->
-<video id="video" autoplay playsinline muted></video>  <!-- "playsinline" ensures the video plays within the page -->
-<canvas id="canvas"></canvas>
 
 <!-- A-Frame Scene -->
 <a-scene embedded 
@@ -60,28 +55,24 @@
   
 </a-scene>
 
+<!-- Video Feed from Camera -->
+<video id="video" autoplay></video>
+<canvas id="canvas"></canvas>
+
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');
-
+  const camera = document.getElementById('ar-camera');  // Camera entity
+  
+  // Initialize jsfeat variables
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
-  for (let i = 0; i < canvas.width * canvas.height; i++) {
-    corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-  }
-
-  let lastCorners = null;
+  for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+  
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
   const depthScale = 1; // Adjust this scale based on your environment
-
-  const kalman = new jsfeat.kalman_filter_t(3, 3); // Kalman filter with 3 states
-  kalman.set_transition([1, 0, 0, 0, 1, 0, 0, 0, 1]); // identity transition matrix
-  kalman.set_measurement([1, 0, 0, 0, 1, 0, 0, 0, 1]); // measurement matrix
-  kalman.set_process_noise([1e-5, 0, 0, 0, 1e-5, 0, 0, 0, 1e-5]); // process noise
-  kalman.set_measurement_noise([1e-1, 0, 0, 0, 1e-1, 0, 0, 0, 1e-1]); // measurement noise
 
   navigator.mediaDevices.getUserMedia({ 
     video: { facingMode: { exact: "environment" } }
@@ -111,9 +102,6 @@
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
     // Detect keypoints
-    jsfeat.yape06.laplacian_threshold = 30; // Increased sensitivity
-    jsfeat.yape06.min_eigen_value_threshold = 25; // Increased sensitivity
-
     const count = jsfeat.yape06.detect(img_u8, corners, 100);
 
     const points = [];
@@ -125,49 +113,31 @@
   }
 
   function estimateCameraPose(points) {
-    if (points.length > 0 && lastCorners) {
-      // Use optical flow to track features
-      const currentCorners = points.map(p => [p.x, p.y]);
-      const previousCorners = lastCorners.map(p => [p.x, p.y]);
-
-      const [dx, dy] = estimateOpticalFlow(previousCorners, currentCorners);
-
+    if (points.length > 0) {
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
+      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
+
+      // Estimate Z based on a constant or a heuristic
       const zEstimate = depthScale;
 
+      // Apply smoothing
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
       const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-      kalman.correct([smoothedX, smoothedY, smoothedZ]);
-      kalman.predict();
-
-      const [kalmanX, kalmanY, kalmanZ] = kalman.get_state();
-
-      camera.setAttribute('position', `${kalmanX} ${kalmanY} ${kalmanZ}`);
+      // Update camera position instead of the model
+      camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
       
-      console.log(`Updated Camera Position: ${kalmanX} ${kalmanY} ${kalmanZ}`);
-
-      lastX = kalmanX;
-      lastY = kalmanY;
-      lastZ = kalmanZ;
+      console.log(`Updated Camera Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
+      
+      lastX = smoothedX;
+      lastY = smoothedY;
+      lastZ = smoothedZ;
     }
-    lastCorners = points;
-  }
-
-  function estimateOpticalFlow(prevPoints, currPoints) {
-    let dx = 0, dy = 0;
-    for (let i = 0; i < prevPoints.length; i++) {
-      dx += currPoints[i][0] - prevPoints[i][0];
-      dy += currPoints[i][1] - prevPoints[i][1];
-    }
-    dx /= prevPoints.length;
-    dy /= prevPoints.length;
-    return [dx, dy];
   }
 
   function processVideo() {
