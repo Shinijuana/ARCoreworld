@@ -1,80 +1,17 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Astronave con SLAM</title>
-  
-  <!-- A-Frame for rendering the scene -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  
-  <!-- jsfeat library for feature detection and tracking -->
-  <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
-
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-    #video, #canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 0;
-    }
-    a-scene {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1;
-      overflow: hidden;
-    }
-  </style>
-</head>
-<body style="margin: 0; overflow: hidden;">
-
-<!-- A-Frame Scene -->
-<a-scene embedded 
-         renderer="colorManagement: true, physicallyCorrectLights" 
-         vr-mode-ui="enabled: false" 
-         device-orientation-permission-ui="enabled: false">
-    
-  <a-assets>
-      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
-  </a-assets>
-
-  <!-- Astronave Model at fixed position -->
-  <a-entity id="astronave" position="0 0 -10" gltf-model="#astro" scale="1 1 1"></a-entity>
-
-  <!-- Camera for AR scene -->
-  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
-  
-</a-scene>
-
-<!-- Video Feed from Camera -->
-<video id="video" autoplay></video>
-<canvas id="canvas"></canvas>
-
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
+  const model = document.getElementById('astronave');
 
   // jsfeat initialization
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
   for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
 
-  let lastX = 0, lastY = 0, lastZ = 0;
-  const smoothingFactor = 0.05; // Decrease smoothing factor for more gradual movements
-  const depthScale = 1; // Adjust this scale as necessary
-
-  let poseHistory = [];
+  const depthScale = 1;
+  let lastPlanePosition = {x: 0, y: 0, z: 0};
 
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: { exact: "environment" } }
@@ -103,7 +40,7 @@
     // Convert to grayscale
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
-    // Detect keypoints (increase threshold for more features)
+    // Detect keypoints
     const count = jsfeat.yape06.detect(img_u8, corners, 500);
 
     const points = [];
@@ -114,45 +51,65 @@
     return points;
   }
 
-  function estimateCameraPose(points) {
-    if (points.length > 0) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  function clusterPoints(points, clusterRadius) {
+    // Simple clustering based on proximity
+    const clusters = [];
+    for (let i = 0; i < points.length; i++) {
+      let foundCluster = false;
+      for (let j = 0; j < clusters.length; j++) {
+        const dist = Math.sqrt(
+          Math.pow(points[i].x - clusters[j].x, 2) +
+          Math.pow(points[i].y - clusters[j].y, 2)
+        );
+        if (dist < clusterRadius) {
+          clusters[j].points.push(points[i]);
+          clusters[j].x = (clusters[j].x * clusters[j].points.length + points[i].x) / (clusters[j].points.length + 1);
+          clusters[j].y = (clusters[j].y * clusters[j].points.length + points[i].y) / (clusters[j].points.length + 1);
+          foundCluster = true;
+          break;
+        }
+      }
+      if (!foundCluster) {
+        clusters.push({ x: points[i].x, y: points[i].y, points: [points[i]] });
+      }
+    }
+    return clusters;
+  }
 
-      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
+  function estimatePlanePose(cluster) {
+    if (cluster.points.length > 0) {
+      const avgX = cluster.points.reduce((sum, p) => sum + p.x, 0) / cluster.points.length;
+      const avgY = cluster.points.reduce((sum, p) => sum + p.y, 0) / cluster.points.length;
+
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
 
-      // Estimate Z based on a more dynamic heuristic
-      const zEstimate = depthScale + (points.length / 1000); // Example dynamic depth estimate
+      const zEstimate = depthScale;  // Constant depth for simplicity, but can be enhanced
 
-      // Store the current pose in history for smoothing
-      poseHistory.push({ x: x3D, y: y3D, z: zEstimate });
-      if (poseHistory.length > 5) poseHistory.shift(); // Limit history size
-
-      // Apply smoothing using a simple moving average filter
-      const smoothedX = poseHistory.reduce((sum, pose) => sum + pose.x, 0) / poseHistory.length;
-      const smoothedY = poseHistory.reduce((sum, pose) => sum + pose.y, 0) / poseHistory.length;
-      const smoothedZ = poseHistory.reduce((sum, pose) => sum + pose.z, 0) / poseHistory.length;
-
-      // Update camera position
-      camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-
-      console.log(`Updated Camera Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
-
-      lastX = smoothedX;
-      lastY = smoothedY;
-      lastZ = smoothedZ;
+      return {x: x3D, y: y3D, z: zEstimate};
     }
+    return lastPlanePosition;
   }
 
   function processVideo() {
     const points = detectFeatures();
-    estimateCameraPose(points);
+    
+    // Cluster the points to identify planes
+    const clusters = clusterPoints(points, 20);  // Adjust cluster radius for sensitivity
+    
+    if (clusters.length > 0) {
+      // Choose the largest cluster as the detected plane
+      let largestCluster = clusters.reduce((max, cluster) => cluster.points.length > max.points.length ? cluster : max);
+      
+      const planePose = estimatePlanePose(largestCluster);
+      
+      // Update the model position to be on the detected plane
+      model.setAttribute('position', `${planePose.x} ${planePose.y} ${planePose.z}`);
+      lastPlanePosition = planePose;
+
+      console.log(`Model positioned at: ${planePose.x}, ${planePose.y}, ${planePose.z}`);
+    }
+
     requestAnimationFrame(processVideo);
   }
 </script>
-
-
-</body>
-</html>
