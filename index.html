@@ -73,11 +73,6 @@
   }
 
   function initializeApp() {
-    if (!cvLoaded) {
-      console.error('OpenCV.js not loaded.');
-      return;
-    }
-
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -88,7 +83,7 @@
     const depthScale = 1;
 
     navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: { exact: "environment" } }
+      video: { facingMode: true }
     })
     .then((stream) => {
       video.srcObject = stream;
@@ -106,38 +101,31 @@
     });
 
     function detectFeatures() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        const src = cv.matFromImageData(imageData);
-        const gray = new cv.Mat();
-        const corners = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
+      const src = cv.matFromImageData(imageData);
+      const gray = new cv.Mat();
+      const corners = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
 
-        console.log(`Numero di punti rilevati: ${corners.rows}`);
+      console.log(Numero di punti rilevati: ${corners.rows});
 
+      if (corners.rows > 0) {
         const points = [];
         for (let i = 0; i < corners.rows; i++) {
           const pt = corners.row(i).data32F;
           points.push({ x: pt[0], y: pt[1] });
         }
-
-        src.delete();
-        gray.delete();
-        corners.delete();
-
-        if (points.length > 0) {
-          console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
-        } else {
-          console.log('Nessun punto rilevato.');
-        }
+        console.log('Punti rilevati:', points.map(p => (${p.x}, ${p.y})));
         return points;
       } else {
-        console.log('Il video non è pronto.');
+        console.log('Nessun punto rilevato.');
         return [];
       }
+
+      src.delete(); gray.delete(); corners.delete();
     }
 
     function estimateCameraPose(points) {
@@ -152,8 +140,8 @@
         const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
         const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-        camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-        console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
+        camera.setAttribute('position', ${smoothedX} ${smoothedY} ${smoothedZ});
+        console.log(Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ});
         
         lastX = smoothedX;
         lastY = smoothedY;
@@ -181,7 +169,7 @@
         B = (sumY - A * sumX) / n;
         C = -A * canvas.width / 2 + B * canvas.height / 2;
 
-        console.log(`Piano stimato: A=${A}, B=${B}, C=${C}`);
+        console.log(Piano stimato: A=${A}, B=${B}, C=${C});
         return { A, B, C };
       } else {
         console.log("Non ci sono abbastanza punti per stimare un piano.");
