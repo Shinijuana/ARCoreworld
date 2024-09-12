@@ -63,6 +63,9 @@
   let cvLoaded = false;
   let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
 
+  // Coordinate fisse dell'astronave nel mondo 3D
+  let anchorX = 0, anchorY = 0, anchorZ = -10;
+
   function onOpenCvReady() {
     cvLoaded = true;
     console.log('OpenCV.js is ready.');
@@ -81,7 +84,6 @@
     const astronave = document.getElementById('astronave');
 
     let lastX = 0, lastY = 0, lastZ = 0;
-    let anchorX = 0, anchorY = 0, anchorZ = -10; // Coordinate iniziali del modello ancorato
     const smoothingFactor = 0.1;
     const depthScale = 1;
 
@@ -132,35 +134,52 @@
     }
 
     function estimateCameraPose(points) {
-      if (points.length > 0 && !isPlaneAnchored) {
-        // Calcoliamo la media dei punti rilevati
+      if (points.length > 0) {
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
         const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+        // Calcolo della posizione 3D stimata basata sui punti rilevati
         const x3D = (avgX / canvas.width) * 10 - 5;
         const y3D = (avgY / canvas.height) * 10 - 5;
         const zEstimate = depthScale;
 
-        // Impostiamo il modello astronave alle coordinate del piano stimato
-        anchorX = x3D;
-        anchorY = y3D;
-        anchorZ = zEstimate;
+        // Smussamento per evitare salti bruschi
+        const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
+        const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+        const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
+        // Aggiornamento della posizione della camera
+        camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
+        console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
+
+        lastX = smoothedX;
+        lastY = smoothedY;
+        lastZ = smoothedZ;
+      } else {
+        console.log("Nessun punto rilevato.");
+      }
+    }
+
+    // La funzione per ancorare l'astronave sarà eseguita una sola volta
+    function anchorAstronave() {
+      if (!isPlaneAnchored) {
         astronave.setAttribute('position', `${anchorX} ${anchorY} ${anchorZ}`);
         console.log(`Astronave ancorata a: X=${anchorX}, Y=${anchorY}, Z=${anchorZ}`);
-        
-        isPlaneAnchored = true; // Indica che il piano è stato ancorato
+        isPlaneAnchored = true;
       }
     }
 
     function processVideo() {
       const points = detectFeatures();
       if (!isPlaneAnchored) {
-        estimateCameraPose(points);
+        anchorAstronave();  // L'ancoraggio avviene solo una volta
       }
+      estimateCameraPose(points); // Aggiorniamo la posizione della camera
       requestAnimationFrame(processVideo);
     }
   }
 </script>
+
 
 
 </body>
