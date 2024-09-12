@@ -8,8 +8,8 @@
   <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   
-  <!-- jsfeat library for feature detection and tracking -->
-  <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
+  <!-- OpenCV.js library -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 
   <style>
     body {
@@ -59,22 +59,28 @@
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
 
-<!-- Script to handle the video and feature detection -->
 <script type="text/javascript">
+  let cvLoaded = false;
+  function onOpenCvReady() {
+    cvLoaded = true;
+    console.log('OpenCV.js is ready.');
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const camera = document.getElementById('ar-camera');
 
-    // Initialize jsfeat variables
-    let img_u8 = null;
-    const corners = [];
+    if (!cvLoaded) {
+      console.error('OpenCV.js not loaded');
+      return;
+    }
+
     let lastX = 0, lastY = 0, lastZ = 0;
     const smoothingFactor = 0.1;
     const depthScale = 1;
 
-    // Request access to the camera
     navigator.mediaDevices.getUserMedia({ 
       video: { facingMode: true }
     })
@@ -83,10 +89,6 @@
       video.addEventListener('loadedmetadata', () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
-        for (let i = 0; i < canvas.width * canvas.height; i++) {
-          corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-        }
         video.play();
       });
       video.addEventListener('play', () => {
@@ -97,30 +99,24 @@
       console.error('Errore nell\'accesso alla fotocamera: ', error);
     });
 
-    // Function to detect features from the video feed
     function detectFeatures() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // Debug output
-      console.log('Larghezza canvas:', canvas.width, 'Altezza canvas:', canvas.height);
-      console.log('Dati immagine (prime 100):', imageData.data.slice(0, 100));
+      const src = cv.matFromImageData(imageData);
+      const gray = new cv.Mat();
+      const corners = new cv.Mat();
+      const dst = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
 
-      // Convert the image to grayscale and increase contrast
-      jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
-      jsfeat.imgproc.equalize_histogram(img_u8, img_u8); // Increase contrast
+      console.log(`Numero di punti rilevati: ${corners.rows}`);
 
-      // Set detection thresholds and detect features
-      jsfeat.yape06.laplacian_threshold = 20;
-      jsfeat.yape06.min_eigen_value_threshold = 10;
-      const count = jsfeat.yape06.detect(img_u8, corners, 500);
-
-      // Debug output
-      console.log(`Numero di punti rilevati: ${count}`);
-      if (count > 0) {
+      if (corners.rows > 0) {
         const points = [];
-        for (let i = 0; i < count; i++) {
-          points.push({ x: corners[i].x, y: corners[i].y });
+        for (let i = 0; i < corners.rows; i++) {
+          const pt = corners.row(i).data32F;
+          points.push({ x: pt[0], y: pt[1] });
         }
         console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
         return points;
@@ -128,9 +124,10 @@
         console.log('Nessun punto rilevato.');
         return [];
       }
+
+      src.delete(); gray.delete(); corners.delete(); dst.delete();
     }
 
-    // Function to estimate camera pose based on detected points
     function estimateCameraPose(points) {
       if (points.length > 0) {
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
@@ -154,10 +151,8 @@
       }
     }
 
-    // Function to estimate a plane based on detected points
     function estimatePlane(points) {
       if (points.length > 2) {
-        // Use a simple planar fit algorithm (least squares fit for 2D points)
         let A = 0, B = 0, C = 0;
         let sumX = 0, sumY = 0;
         let sumXY = 0, sumXX = 0;
@@ -182,7 +177,6 @@
       }
     }
 
-    // Main function to process video frames
     function processVideo() {
       const points = detectFeatures();
       estimateCameraPose(points);
