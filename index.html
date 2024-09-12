@@ -53,7 +53,6 @@
   <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
   
-  
 </a-scene>
 
 <!-- Video Feed from Camera -->
@@ -76,7 +75,7 @@
   const depthScale = 1; // Adjust this scale based on your environment
 
   navigator.mediaDevices.getUserMedia({ 
-    video: { facingMode: { exact: "environment" } } 
+    video: { facingMode: { exact: "environment" } }  // Use the rear camera
   })
     .then((stream) => {
       video.srcObject = stream;
@@ -131,10 +130,10 @@
       const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
       // Update position
-      modelEntity.setAttribute('position', ${smoothedX} ${smoothedY} ${smoothedZ});
+      modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
       
       // Log values
-      console.log(Updated Position: ${smoothedX} ${smoothedY} ${smoothedZ});
+      console.log(`Updated Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
       
       lastX = smoothedX;
       lastY = smoothedY;
@@ -148,7 +147,6 @@
     requestAnimationFrame(processVideo);
   }
 </script>
-
 
 </body>
 </html>
