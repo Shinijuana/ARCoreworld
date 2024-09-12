@@ -84,8 +84,8 @@
     const astronave = document.getElementById('astronave');
 
     let lastX = 0, lastY = 0, lastZ = 0;
-    const smoothingFactor = 0.1;
-    const depthScale = 1;
+    const smoothingFactor = 0.5;  // Aumentato il fattore di smussamento per maggiore reattività
+    const depthScale = 10;        // Valore di scala per la stima della profondità
 
     navigator.mediaDevices.getUserMedia({ 
       video: { facingMode: true }
@@ -105,63 +105,69 @@
       console.error('Errore nell\'accesso alla fotocamera: ', error);
     });
 
-function detectFeatures() {
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    function detectFeatures() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-  const src = cv.matFromImageData(imageData);
-  const gray = new cv.Mat();
-  const corners = new cv.Mat();
+      const src = cv.matFromImageData(imageData);
+      const gray = new cv.Mat();
+      const corners = new cv.Mat();
 
-  // Converti l'immagine in scala di grigi
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      // Converti l'immagine in scala di grigi
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-  // Verifica che la matrice 'gray' sia valida prima di procedere
-  if (gray.empty()) {
-    console.error('L\'immagine in scala di grigi è vuota!');
-    src.delete();
-    gray.delete();
-    corners.delete();
-    return [];
-  }
+      // Ridimensiona l'immagine per migliorare le prestazioni
+      cv.resize(gray, gray, new cv.Size(video.videoWidth / 2, video.videoHeight / 2));
 
-  // Usa goodFeaturesToTrack per rilevare i punti
-  cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
-  console.log(`Numero di punti rilevati: ${corners.rows}`);
+      // Verifica che la matrice 'gray' sia valida prima di procedere
+      if (gray.empty()) {
+        console.error('L\'immagine in scala di grigi è vuota!');
+        src.delete();
+        gray.delete();
+        corners.delete();
+        return [];
+      }
 
-  if (corners.rows > 0) {
-    const points = [];
-    for (let i = 0; i < corners.rows; i++) {
-      const pt = corners.row(i).data32F;
-      points.push({ x: pt[0], y: pt[1] });
+      // Usa goodFeaturesToTrack per rilevare i punti, con parametri ottimizzati
+      cv.goodFeaturesToTrack(gray, corners, 1000, 0.01, 5);
+      console.log(`Numero di punti rilevati: ${corners.rows}`);
+
+      if (corners.rows > 0) {
+        const points = [];
+        for (let i = 0; i < corners.rows; i++) {
+          const pt = corners.row(i).data32F;
+          points.push({ x: pt[0], y: pt[1] });
+        }
+        src.delete(); gray.delete(); corners.delete();
+        return points;
+      } else {
+        src.delete(); gray.delete(); corners.delete();
+        return [];
+      }
     }
-    console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
-    src.delete(); gray.delete(); corners.delete();
-    return points;
-  } else {
-    console.log('Nessun punto rilevato.');
-    src.delete(); gray.delete(); corners.delete();
-    return [];
-  }
-}
-
 
     function estimateCameraPose(points) {
       if (points.length > 0) {
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
         const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-        // Calcolo della posizione 3D stimata basata sui punti rilevati
+        // Calcolo della varianza per stimare la profondità (Z)
+        const varianceX = points.reduce((sum, p) => sum + Math.pow(p.x - avgX, 2), 0) / points.length;
+        const varianceY = points.reduce((sum, p) => sum + Math.pow(p.y - avgY, 2), 0) / points.length;
+
+        // Stima della profondità basata sulla varianza dei punti
+        const zEstimate = depthScale / Math.sqrt(varianceX + varianceY + 1);
+
+        // Calcolo delle coordinate 3D per X e Y
         const x3D = (avgX / canvas.width) * 10 - 5;
         const y3D = (avgY / canvas.height) * 10 - 5;
-        const zEstimate = depthScale;
 
         // Smussamento per evitare salti bruschi
         const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
         const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
         const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-        // Aggiornamento della posizione della camera
+        // Aggiorna la posizione della camera
         camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
         console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
 
@@ -192,8 +198,6 @@ function detectFeatures() {
     }
   }
 </script>
-
-
 
 </body>
 </html>
