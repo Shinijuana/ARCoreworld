@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Astronave con SLAM</title>
+  <title>AR Astronave con SLAM Migliorato</title>
   
   <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
@@ -63,16 +63,24 @@
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');  // Camera entity
-  
-  // Initialize jsfeat variables
+  const camera = document.getElementById('ar-camera');
+
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
-  for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-  
+  for (let i = 0; i < canvas.width * canvas.height; i++) {
+    corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+  }
+
+  let lastCorners = null;
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
   const depthScale = 1; // Adjust this scale based on your environment
+
+  const kalman = new jsfeat.kalman_filter_t(3, 3); // Kalman filter with 3 states
+  kalman.set_transition([1, 0, 0, 0, 1, 0, 0, 0, 1]); // identity transition matrix
+  kalman.set_measurement([1, 0, 0, 0, 1, 0, 0, 0, 1]); // measurement matrix
+  kalman.set_process_noise([1e-5, 0, 0, 0, 1e-5, 0, 0, 0, 1e-5]); // process noise
+  kalman.set_measurement_noise([1e-1, 0, 0, 0, 1e-1, 0, 0, 0, 1e-1]); // measurement noise
 
   navigator.mediaDevices.getUserMedia({ 
     video: { facingMode: { exact: "environment" } }
@@ -102,6 +110,9 @@
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
     // Detect keypoints
+    jsfeat.yape06.laplacian_threshold = 30; // Increased sensitivity
+    jsfeat.yape06.min_eigen_value_threshold = 25; // Increased sensitivity
+
     const count = jsfeat.yape06.detect(img_u8, corners, 100);
 
     const points = [];
@@ -113,39 +124,50 @@
   }
 
   function estimateCameraPose(points) {
-  if (points.length > 0) {
-    const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    if (points.length > 0 && lastCorners) {
+      // Use optical flow to track features
+      const currentCorners = points.map(p => [p.x, p.y]);
+      const previousCorners = lastCorners.map(p => [p.x, p.y]);
 
-    // Adjust the scaling factors based on real-world depth and scene size
-    const scaleFactorX = 8; // Adjust based on canvas width to model scale
-    const scaleFactorY = 8; // Adjust based on canvas height to model scale
-    const depthScale = 5; // Adjust Z depth for realistic depth in AR
+      const [dx, dy] = estimateOpticalFlow(previousCorners, currentCorners);
 
-    // Convert 2D screen position to 3D world position with scaling
-    const x3D = (avgX / canvas.width) * scaleFactorX - scaleFactorX / 2;
-    const y3D = (avgY / canvas.height) * scaleFactorY - scaleFactorY / 2;
+      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-    // Estimate Z with a fixed scale or a dynamic scale based on environment
-    const zEstimate = -depthScale; // Z remains negative for real-world positioning
+      const x3D = (avgX / canvas.width) * 10 - 5;
+      const y3D = (avgY / canvas.height) * 10 - 5;
+      const zEstimate = depthScale;
 
-    // Apply smoothing
-    const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-    const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-    const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
+      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
+      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-    // Update camera position instead of model
-    cameraEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-    
-    // Log updated position
-    console.log(`Updated Camera Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
-    
-    lastX = smoothedX;
-    lastY = smoothedY;
-    lastZ = smoothedZ;
+      kalman.correct([smoothedX, smoothedY, smoothedZ]);
+      kalman.predict();
+
+      const [kalmanX, kalmanY, kalmanZ] = kalman.get_state();
+
+      camera.setAttribute('position', `${kalmanX} ${kalmanY} ${kalmanZ}`);
+      
+      console.log(`Updated Camera Position: ${kalmanX} ${kalmanY} ${kalmanZ}`);
+
+      lastX = kalmanX;
+      lastY = kalmanY;
+      lastZ = kalmanZ;
+    }
+    lastCorners = points;
   }
-}
 
+  function estimateOpticalFlow(prevPoints, currPoints) {
+    let dx = 0, dy = 0;
+    for (let i = 0; i < prevPoints.length; i++) {
+      dx += currPoints[i][0] - prevPoints[i][0];
+      dy += currPoints[i][1] - prevPoints[i][1];
+    }
+    dx /= prevPoints.length;
+    dy /= prevPoints.length;
+    return [dx, dy];
+  }
 
   function processVideo() {
     const points = detectFeatures();
