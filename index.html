@@ -84,7 +84,7 @@
     const ctx = canvas.getContext('2d');
     const camera = document.getElementById('ar-camera');
     const astronave = document.getElementById('astronave');
-    const plane = document.getElementById('plane');
+    const plane = document.querySelector('#plane'); // Usa querySelector per garantire che venga trovato l'elemento
 
     debugCanvas.style.position = 'absolute';
     debugCanvas.style.top = '0';
@@ -216,7 +216,7 @@
       if (plane) {
         debugCtx.strokeStyle = 'blue';
         debugCtx.beginPath();
-        debugCtx.moveTo(0, -plane.D / plane.B);
+        debugCtx.moveTo(0, (-plane.D - plane.A * 0) / plane.B);
         debugCtx.lineTo(canvas.width, (-plane.D - plane.A * canvas.width) / plane.B);
         debugCtx.stroke();
       }
@@ -249,10 +249,10 @@
     function anchorPlane(points) {
       if (points.length > 500) {
         // Calcola il piano 3D usando i punti
-        const plane = estimate3DPlane(points);
+        const planeCoefficients = estimate3DPlane(points);
 
         // Anchora il piano nella scena
-        if (!isPlaneAnchored) {
+        if (!isPlaneAnchored && plane) {
           const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
           const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
@@ -262,6 +262,8 @@
 
           // Imposta la posizione del piano in A-Frame
           plane.setAttribute('position', `${newX} ${newY} ${newZ}`);
+          plane.setAttribute('rotation', '-90 0 0');  // Ruota il piano per essere orizzontale
+
           console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
 
           isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
@@ -271,11 +273,9 @@
 
     function processVideo() {
       const points = detectFeatures();
-      if (!isPlaneAnchored) {
-        anchorPlane(points);  // L'ancoraggio avviene solo quando viene rilevato un piano
-      }
+      anchorPlane(points);  // L'ancoraggio avviene solo quando viene rilevato un piano
       estimateCameraPose(points); // Aggiorniamo la posizione della camera
-      drawDebug(points); // Disegna punti e piano sul canvas di debug
+      drawDebug(points, estimate3DPlane(points)); // Disegna punti e piano sul canvas di debug
       requestAnimationFrame(processVideo);
     }
   }
