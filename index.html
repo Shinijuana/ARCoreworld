@@ -58,6 +58,7 @@
 <!-- Video Feed from Camera -->
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
+<canvas id="debug-canvas" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2;"></canvas>
 
 <script type="text/javascript">
 let cvLoaded = false;
@@ -81,6 +82,12 @@ function initializeApp() {
   const camera = document.getElementById('ar-camera');
   const astronave = document.getElementById('astronave');
   const debugCanvas = document.getElementById('debug-canvas');
+
+  // Verifica che il canvas di debug esista e ottieni il contesto
+  if (!debugCanvas) {
+    console.error('Canvas di debug non trovato.');
+    return;
+  }
   const debugCtx = debugCanvas.getContext('2d');
 
   let lastX = 0, lastY = 0, lastZ = 0;
@@ -242,6 +249,7 @@ function initializeApp() {
     requestAnimationFrame(processVideo);
   }
 }
+
 </script>
 
 </body>
