@@ -1,3 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Astronave con SLAM</title>
+  
+  <!-- A-Frame for rendering the scene -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  
+  <!-- jsfeat library for feature detection and tracking -->
+  <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    #video, #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+    }
+    a-scene {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body style="margin: 0; overflow: hidden;">
+
+<!-- A-Frame Scene -->
+<a-scene embedded 
+         renderer="colorManagement: true, physicallyCorrectLights" 
+         vr-mode-ui="enabled: false" 
+         device-orientation-permission-ui="enabled: false">
+    
+  <a-assets>
+      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
+  </a-assets>
+
+  <!-- Astronave Model at fixed position -->
+  <a-entity id="astronave" position="0 0 -10" gltf-model="#astro" scale="1 1 1"></a-entity>
+
+  <!-- Camera for AR scene -->
+  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
+  
+</a-scene>
+
+<!-- Video Feed from Camera -->
+<video id="video" autoplay></video>
+<canvas id="canvas"></canvas>
+
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
@@ -113,3 +174,7 @@
     requestAnimationFrame(processVideo);
   }
 </script>
+
+
+</body>
+</html>
