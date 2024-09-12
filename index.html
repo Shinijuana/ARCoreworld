@@ -89,7 +89,7 @@
   let lastPlanePosition = { x: 0, y: 0, z: -10 };  // Default Z distance for model positioning
 
   navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { exact: "environment" } }
+    video: true
   })
     .then((stream) => {
       video.srcObject = stream;
@@ -117,6 +117,8 @@
 
     // Detect keypoints
     const count = jsfeat.yape06.detect(img_u8, corners, 500);
+
+    console.log(`Numero di punti rilevati: ${count}`);
 
     const points = [];
     for (let i = 0; i < count; i++) {
@@ -148,6 +150,9 @@
         clusters.push({ x: points[i].x, y: points[i].y, points: [points[i]] });
       }
     }
+
+    console.log(`Numero di cluster identificati: ${clusters.length}`);
+
     return clusters;
   }
 
@@ -163,39 +168,46 @@
       // Fixed depth for now; this can be dynamic based on clustering data
       const zEstimate = -4;  // Keep model in front of the camera at a fixed distance
 
+      console.log(`Piano stimato alle coordinate: X=${x3D}, Y=${y3D}, Z=${zEstimate}`);
+
       return { x: x3D, y: y3D, z: zEstimate };
     }
     return lastPlanePosition;
   }
 
   function processVideo() {
-    const points = detectFeatures();
+    try {
+      const points = detectFeatures();
 
-    // Cluster the points to identify planes
-    const clusters = clusterPoints(points, 20);  // Adjust cluster radius for sensitivity
+      // Cluster the points to identify planes
+      const clusters = clusterPoints(points, 20);  // Adjust cluster radius for sensitivity
 
-    if (clusters.length > 0) {
-      // Choose the largest cluster as the detected plane
-      let largestCluster = clusters.reduce((max, cluster) => cluster.points.length > max.points.length ? cluster : max);
+      if (clusters.length > 0) {
+        // Choose the largest cluster as the detected plane
+        let largestCluster = clusters.reduce((max, cluster) => cluster.points.length > max.points.length ? cluster : max);
 
-      const planePose = estimatePlanePose(largestCluster);
+        const planePose = estimatePlanePose(largestCluster);
 
-      // Update the model position to be on the detected plane
-      model.setAttribute('position', `${planePose.x} ${planePose.y} ${planePose.z}`);
-      lastPlanePosition = planePose;
+        // Update the model position to be on the detected plane
+        model.setAttribute('position', `${planePose.x} ${planePose.y} ${planePose.z}`);
+        lastPlanePosition = planePose;
 
-      // Display feedback when a plane is detected
-      feedback.style.display = 'block';
-      setTimeout(() => {
-        feedback.style.display = 'none';
-      }, 2000);  // Hide the message after 2 seconds
+        // Display feedback when a plane is detected
+        feedback.style.display = 'block';
+        setTimeout(() => {
+          feedback.style.display = 'none';
+        }, 2000);  // Hide the message after 2 seconds
 
-      console.log(`Model positioned at: ${planePose.x}, ${planePose.y}, ${planePose.z}`);
-    } else {
-      feedback.style.display = 'none';  // Hide feedback if no plane is detected
+        console.log(`Modello posizionato su: X=${planePose.x}, Y=${planePose.y}, Z=${planePose.z}`);
+      } else {
+        feedback.style.display = 'none';  // Hide feedback if no plane is detected
+        console.log("Nessun piano rilevato in questo frame.");
+      }
+
+      requestAnimationFrame(processVideo);
+    } catch (error) {
+      console.error("Errore durante il processo di video:", error);
     }
-
-    requestAnimationFrame(processVideo);
   }
 </script>
 
