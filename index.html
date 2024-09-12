@@ -83,8 +83,16 @@
     const camera = document.getElementById('ar-camera');
 
     // Initialize OpenCV
-    let srcMat = new cv.Mat();
-    let grayMat = new cv.Mat();
+    let srcMat, grayMat;
+
+    // Check if cv is defined
+    if (typeof cv === 'undefined') {
+      console.error('OpenCV.js not available');
+      return;
+    }
+
+    srcMat = new cv.Mat();
+    grayMat = new cv.Mat();
 
     let lastX = 0, lastY = 0, lastZ = 0;
     const smoothingFactor = 0.1;
@@ -114,6 +122,8 @@
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
       // Convert image data to OpenCV Mat
+      srcMat.delete(); // Clean up previous Mat to avoid memory leaks
+      grayMat.delete(); // Clean up previous Mat to avoid memory leaks
       srcMat = cv.matFromImageData(imageData);
       cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
 
