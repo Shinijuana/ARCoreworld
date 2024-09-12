@@ -22,7 +22,7 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 0; /* Ensure canvas and video are behind the A-Frame scene */
+      z-index: 0;
     }
     a-scene {
       position: absolute;
@@ -30,8 +30,8 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 1; /* Ensure the A-Frame scene is above the video and canvas */
-      overflow: hidden; /* Prevent scrollbars from appearing */
+      z-index: 1;
+      overflow: hidden;
     }
   </style>
 </head>
@@ -47,8 +47,8 @@
       <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
   </a-assets>
 
-  <!-- Astronave Model -->
-  <a-entity id="astronave" position="0 0 -5" gltf-model="#astro" scale="1 1 1"></a-entity>
+  <!-- Astronave Model at fixed position -->
+  <a-entity id="astronave" position="0 0 -10" gltf-model="#astro" scale="1 1 1"></a-entity>
 
   <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -63,19 +63,19 @@
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  const modelEntity = document.getElementById('astronave');
+  const camera = document.getElementById('ar-camera');  // Camera entity
   
   // Initialize jsfeat variables
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
   for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
   
-  let lastX = 0, lastY = 0, lastZ = -5;
+  let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
   const depthScale = 1; // Adjust this scale based on your environment
 
   navigator.mediaDevices.getUserMedia({ 
-    video: true  // Use the rear camera
+    video: { facingMode: { exact: "environment" } }
   })
     .then((stream) => {
       video.srcObject = stream;
@@ -121,19 +121,18 @@
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
 
-      // Estimate Z based on a constant or a heuristic (adjust based on your scene)
-      const zEstimate = depthScale; // Use a constant for now, or refine this based on more complex calculations
+      // Estimate Z based on a constant or a heuristic
+      const zEstimate = depthScale;
 
       // Apply smoothing
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
       const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-      // Update position
-      modelEntity.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
+      // Update camera position instead of the model
+      camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
       
-      // Log values
-      console.log(`Updated Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
+      console.log(`Updated Camera Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
       
       lastX = smoothedX;
       lastY = smoothedY;
