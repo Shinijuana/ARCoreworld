@@ -63,18 +63,20 @@
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');  // Camera entity
-  
-  // Initialize jsfeat variables
+  const camera = document.getElementById('ar-camera');
+
+  // jsfeat initialization
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
   for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-  
-  let lastX = 0, lastY = 0, lastZ = 0;
-  const smoothingFactor = 0.1;
-  const depthScale = 1; // Adjust this scale based on your environment
 
-  navigator.mediaDevices.getUserMedia({ 
+  let lastX = 0, lastY = 0, lastZ = 0;
+  const smoothingFactor = 0.05; // Decrease smoothing factor for more gradual movements
+  const depthScale = 1; // Adjust this scale as necessary
+
+  let poseHistory = [];
+
+  navigator.mediaDevices.getUserMedia({
     video: { facingMode: { exact: "environment" } }
   })
     .then((stream) => {
@@ -101,8 +103,8 @@
     // Convert to grayscale
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
-    // Detect keypoints
-    const count = jsfeat.yape06.detect(img_u8, corners, 100);
+    // Detect keypoints (increase threshold for more features)
+    const count = jsfeat.yape06.detect(img_u8, corners, 500);
 
     const points = [];
     for (let i = 0; i < count; i++) {
@@ -121,19 +123,23 @@
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
 
-      // Estimate Z based on a constant or a heuristic
-      const zEstimate = depthScale;
+      // Estimate Z based on a more dynamic heuristic
+      const zEstimate = depthScale + (points.length / 1000); // Example dynamic depth estimate
 
-      // Apply smoothing
-      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
+      // Store the current pose in history for smoothing
+      poseHistory.push({ x: x3D, y: y3D, z: zEstimate });
+      if (poseHistory.length > 5) poseHistory.shift(); // Limit history size
 
-      // Update camera position instead of the model
+      // Apply smoothing using a simple moving average filter
+      const smoothedX = poseHistory.reduce((sum, pose) => sum + pose.x, 0) / poseHistory.length;
+      const smoothedY = poseHistory.reduce((sum, pose) => sum + pose.y, 0) / poseHistory.length;
+      const smoothedZ = poseHistory.reduce((sum, pose) => sum + pose.z, 0) / poseHistory.length;
+
+      // Update camera position
       camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-      
+
       console.log(`Updated Camera Position: ${smoothedX} ${smoothedY} ${smoothedZ}`);
-      
+
       lastX = smoothedX;
       lastY = smoothedY;
       lastZ = smoothedZ;
@@ -146,6 +152,7 @@
     requestAnimationFrame(processVideo);
   }
 </script>
+
 
 </body>
 </html>
