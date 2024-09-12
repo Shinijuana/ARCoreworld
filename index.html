@@ -62,8 +62,6 @@
 <script type="text/javascript">
 let cvLoaded = false;
 let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
-
-// Coordinate fisse dell'astronave nel mondo 3D
 let anchorX = 0, anchorY = 0, anchorZ = -10;
 
 function onOpenCvReady() {
@@ -79,19 +77,11 @@ function onOpenCvError() {
 function initializeApp() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  const debugCanvas = document.createElement('canvas'); // Canvas per il debug
-  const debugCtx = debugCanvas.getContext('2d');
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
   const astronave = document.getElementById('astronave');
-
-  debugCanvas.style.position = 'absolute';
-  debugCanvas.style.top = '0';
-  debugCanvas.style.left = '0';
-  debugCanvas.style.width = '100vw'; // A tutto schermo
-  debugCanvas.style.height = '100vh'; // A tutto schermo
-  debugCanvas.style.pointerEvents = 'none'; // Assicura che il canvas di debug non interferisca con gli altri eventi
-  document.body.appendChild(debugCanvas);
+  const debugCanvas = document.getElementById('debug-canvas');
+  const debugCtx = debugCanvas.getContext('2d');
 
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
@@ -105,8 +95,6 @@ function initializeApp() {
     video.addEventListener('loadedmetadata', () => {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      debugCanvas.width = canvas.width;
-      debugCanvas.height = canvas.height;
       video.play();
     });
     video.addEventListener('play', () => {
@@ -128,134 +116,132 @@ function initializeApp() {
     // Converti l'immagine in scala di grigi
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    if (gray.empty()) {
-      console.error('L\'immagine in scala di grigi è vuota!');
+    // Usa goodFeaturesToTrack per rilevare i punti
+    cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
+
+    console.log(`Numero di punti rilevati: ${corners.rows}`);
+
+    if (corners.rows > 0) {
+      const points = [];
+      for (let i = 0; i < corners.rows; i++) {
+        const pt = corners.row(i).data32F;
+        points.push({ x: pt[0], y: pt[1] });
+      }
+      src.delete();
+      gray.delete();
+      corners.delete();
+      return points;
+    } else {
       src.delete();
       gray.delete();
       corners.delete();
       return [];
     }
-
-    // Usa goodFeaturesToTrack per rilevare i punti
-    cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
-    console.log(`Numero di punti rilevati: ${corners.rows}`);
-
-    const points = [];
-    for (let i = 0; i < corners.rows; i++) {
-      const pt = corners.row(i).data32F;
-      points.push({ x: pt[0], y: pt[1] });
-    }
-
-    src.delete(); gray.delete(); corners.delete();
-    return points;
   }
 
   function estimatePlane(points) {
-  if (points.length > 2) {
-    const A = [];
-    const B = [];
-    
-    points.forEach(p => {
-      const x = (p.x / canvas.width) * 2 - 1;
-      const y = (p.y / canvas.height) * 2 - 1;
-      A.push([x, y, 1]);
-      B.push([1]);
-    });
+    if (points.length > 2) {
+      // Normalizza i punti
+      const normalizedPoints = points.map(p => ({
+        x: (p.x / canvas.width) * 2 - 1,
+        y: (p.y / canvas.height) * 2 - 1
+      }));
 
-    const A_matrix = new cv.Mat(A, cv.CV_64F);
-    const B_matrix = new cv.Mat(B, cv.CV_64F);
+      // Crea matrici per i punti normalizzati
+      const A = [];
+      const B = [];
+      normalizedPoints.forEach(p => {
+        A.push([p.x, p.y, 1]);
+        B.push([0]); // Costante per il piano
+      });
 
-    // Risolviamo Ax = B
-    const plane = cv.solve(A_matrix, B_matrix, cv.DECOMP_SVD);
-    const [a, b, c] = plane.data64F;
-    
-    console.log(`Piano stimato: A=${a}, B=${b}, C=${c}`);
-    return { a, b, c };
-  } else {
-    console.log("Non ci sono abbastanza punti per stimare un piano.");
-    return null;
-  }
-}
+      // Converti in matrici OpenCV
+      const A_matrix = cv.matFromArray(A.length, A[0].length, cv.CV_64F, A.flat());
+      const B_matrix = cv.matFromArray(B.length, B[0].length, cv.CV_64F, B.flat());
 
-function drawDebug(points, plane) {
-  debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-  debugCtx.strokeStyle = 'red';
-  debugCtx.fillStyle = 'red';
-  debugCtx.lineWidth = 2;
+      // Risolvi Ax = B
+      const plane = new cv.Mat();
+      cv.solve(A_matrix, B_matrix, plane, cv.DECOMP_SVD);
 
-  // Disegna i punti
-  points.forEach(p => {
-    debugCtx.beginPath();
-    debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-    debugCtx.fill();
-  });
+      // Ottieni i coefficienti del piano
+      const [a, b, c] = plane.data64F;
 
-  // Disegna il piano stimato, se esiste
-  if (plane) {
-    debugCtx.strokeStyle = 'blue';
-    debugCtx.beginPath();
-    
-    // Esempio di come disegnare un piano 2D (si assume che il piano sia orizzontale)
-    debugCtx.moveTo(0, -(plane.a * 0 + plane.c) / plane.b);
-    debugCtx.lineTo(canvas.width, -(plane.a * canvas.width + plane.c) / plane.b);
-    debugCtx.stroke();
-  }
-}
+      // Libera memoria
+      A_matrix.delete();
+      B_matrix.delete();
+      plane.delete();
 
-
-  function estimateCameraPose(points) {
-    if (points.length > 0) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const zEstimate = depthScale;
-
-      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
-
-      camera.setAttribute('position', `${smoothedX * 10} ${Math.max(smoothedY * 10, 0)} ${smoothedZ}`);
-      console.log(`Posizione della camera aggiornata: X=${smoothedX * 10}, Y=${Math.max(smoothedY * 10, 0)}, Z=${smoothedZ}`);
-
-      lastX = smoothedX;
-      lastY = smoothedY;
-      lastZ = smoothedZ;
+      console.log(`Piano stimato: A=${a}, B=${b}, C=${c}`);
+      return { a, b, c };
     } else {
-      console.log("Nessun punto rilevato.");
+      console.log("Non ci sono abbastanza punti per stimare un piano.");
+      return null;
     }
   }
 
-  function anchorAstronave(points) {
-    if (points.length > 20) {
-      document.addEventListener('click', function () {
-        const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-        const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  function drawDebug(points, plane) {
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+    debugCtx.strokeStyle = 'red';
+    debugCtx.fillStyle = 'red';
+    debugCtx.lineWidth = 2;
 
-        const newX = (avgX / canvas.width) * 10 - 5;
-        const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-        const newZ = 9;  // Imposta Z fisso
+    // Disegna i punti
+    points.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+      debugCtx.fill();
+    });
 
-        astronave.setAttribute('position', `${newX * 10} ${newY * 10} ${newZ}`);
-        console.log(`Astronave spostata a: X=${newX * 10}, Y=${newY * 10}, Z=${newZ}`);
-        isPlaneAnchored = true;  // Assicurati che l'astronave sia ancorata solo una volta
-      });
+    // Disegna il piano stimato, se esiste
+    if (plane) {
+      debugCtx.strokeStyle = 'blue';
+      debugCtx.beginPath();
+      
+      // Esempio di come disegnare un piano 2D (si assume che il piano sia orizzontale)
+      debugCtx.moveTo(0, -(plane.a * 0 + plane.c) / plane.b);
+      debugCtx.lineTo(canvas.width, -(plane.a * canvas.width + plane.c) / plane.b);
+      debugCtx.stroke();
     }
   }
 
   function processVideo() {
     const points = detectFeatures();
     const plane = estimatePlane(points);
-    if (!isPlaneAnchored) {
-      anchorAstronave(points);  // L'ancoraggio avviene solo quando viene rilevato un piano
+    
+    if (!isPlaneAnchored && plane) {
+      astronave.setAttribute('position', `${anchorX} ${anchorY} ${anchorZ}`);
+      console.log(`Astronave ancorata a: X=${anchorX}, Y=${anchorY}, Z=${anchorZ}`);
+      isPlaneAnchored = true;
     }
-    estimateCameraPose(points); // Aggiorniamo la posizione della camera
-    drawDebug(points, plane); // Disegna punti e piano sul canvas di debug
+
+    // Aggiorna la posizione della camera
+    if (points.length > 0) {
+      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+      // Calcolo della posizione 3D stimata basata sui punti rilevati
+      const x3D = (avgX / canvas.width) * 10 - 5;
+      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0); // y non può scendere sotto 0
+      const zEstimate = 9; // Fisso a 9 per esempio
+
+      // Smussamento per evitare salti bruschi
+      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
+      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
+
+      // Aggiornamento della posizione della camera
+      camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
+      console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
+
+      lastX = smoothedX;
+      lastY = smoothedY;
+      lastZ = smoothedZ;
+    }
+
+    drawDebug(points, plane);
     requestAnimationFrame(processVideo);
   }
 }
-
 </script>
 
 </body>
