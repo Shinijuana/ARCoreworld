@@ -4,11 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AR Astronave con SLAM</title>
-  
-  <!-- A-Frame for rendering the scene -->
+
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  
-  <!-- jsfeat library for feature detection and tracking -->
   <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
 
   <style>
@@ -33,9 +30,26 @@
       z-index: 1;
       overflow: hidden;
     }
+    #feedback {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px;
+      background-color: rgba(0, 255, 0, 0.7);
+      color: white;
+      font-size: 20px;
+      font-family: Arial, sans-serif;
+      border-radius: 5px;
+      z-index: 10;
+      display: none; /* Hide by default */
+    }
   </style>
 </head>
-<body style="margin: 0; overflow: hidden;">
+<body>
+
+<!-- Feedback message for plane detection -->
+<div id="feedback">Piano rilevato!</div>
 
 <!-- A-Frame Scene -->
 <a-scene embedded 
@@ -65,14 +79,14 @@
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
   const model = document.getElementById('astronave');
+  const feedback = document.getElementById('feedback');  // Feedback div
 
   // jsfeat initialization
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
   for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
 
-  const depthScale = 1;
-  let lastPlanePosition = {x: 0, y: 0, z: 0};
+  let lastPlanePosition = { x: 0, y: 0, z: -10 };  // Default Z distance for model positioning
 
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: { exact: "environment" } }
@@ -142,39 +156,48 @@
       const avgX = cluster.points.reduce((sum, p) => sum + p.x, 0) / cluster.points.length;
       const avgY = cluster.points.reduce((sum, p) => sum + p.y, 0) / cluster.points.length;
 
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = (avgY / canvas.height) * 10 - 5;
+      // Map 2D screen coordinates to a 3D position in the A-Frame scene
+      const x3D = (avgX / canvas.width) * 4 - 2;  // Adjust these scaling factors as necessary
+      const y3D = -(avgY / canvas.height) * 4 + 2; // Y axis is inverted in screen space
 
-      const zEstimate = depthScale;  // Constant depth for simplicity, but can be enhanced
+      // Fixed depth for now; this can be dynamic based on clustering data
+      const zEstimate = -4;  // Keep model in front of the camera at a fixed distance
 
-      return {x: x3D, y: y3D, z: zEstimate};
+      return { x: x3D, y: y3D, z: zEstimate };
     }
     return lastPlanePosition;
   }
 
   function processVideo() {
     const points = detectFeatures();
-    
+
     // Cluster the points to identify planes
     const clusters = clusterPoints(points, 20);  // Adjust cluster radius for sensitivity
-    
+
     if (clusters.length > 0) {
       // Choose the largest cluster as the detected plane
       let largestCluster = clusters.reduce((max, cluster) => cluster.points.length > max.points.length ? cluster : max);
-      
+
       const planePose = estimatePlanePose(largestCluster);
-      
+
       // Update the model position to be on the detected plane
       model.setAttribute('position', `${planePose.x} ${planePose.y} ${planePose.z}`);
       lastPlanePosition = planePose;
 
+      // Display feedback when a plane is detected
+      feedback.style.display = 'block';
+      setTimeout(() => {
+        feedback.style.display = 'none';
+      }, 2000);  // Hide the message after 2 seconds
+
       console.log(`Model positioned at: ${planePose.x}, ${planePose.y}, ${planePose.z}`);
+    } else {
+      feedback.style.display = 'none';  // Hide feedback if no plane is detected
     }
 
     requestAnimationFrame(processVideo);
   }
 </script>
-
 
 </body>
 </html>
