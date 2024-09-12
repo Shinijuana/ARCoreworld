@@ -4,8 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AR Astronave con SLAM</title>
-
+  
+  <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  
+  <!-- jsfeat library for feature detection and tracking -->
   <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
 
   <style>
@@ -30,26 +33,9 @@
       z-index: 1;
       overflow: hidden;
     }
-    #feedback {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 10px;
-      background-color: rgba(0, 255, 0, 0.7);
-      color: white;
-      font-size: 20px;
-      font-family: Arial, sans-serif;
-      border-radius: 5px;
-      z-index: 10;
-      display: none; /* Hide by default */
-    }
   </style>
 </head>
-<body>
-
-<!-- Feedback message for plane detection -->
-<div id="feedback">Piano rilevato!</div>
+<body style="margin: 0; overflow: hidden;">
 
 <!-- A-Frame Scene -->
 <a-scene embedded 
@@ -77,18 +63,21 @@
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');
-  const model = document.getElementById('astronave');
-  const feedback = document.getElementById('feedback');  // Feedback div
+  const camera = document.getElementById('ar-camera');  // Camera entity
 
-  // jsfeat initialization
+  // Initialize jsfeat variables
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
   const corners = [];
-  for (let i = 0; i < canvas.width * canvas.height; i++) corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+  for (let i = 0; i < canvas.width * canvas.height; i++) {
+    corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+  }
 
-  let lastPlanePosition = { x: 0, y: 0, z: -10 };  // Default Z distance for model positioning
+  let lastX = 0, lastY = 0, lastZ = 0;
+  const smoothingFactor = 0.1;
+  const depthScale = 1; // Adjust this scale based on your environment
 
-  navigator.mediaDevices.getUserMedia({
+  // Video stream setup
+  navigator.mediaDevices.getUserMedia({ 
     video: true
   })
     .then((stream) => {
@@ -105,17 +94,32 @@
       });
     })
     .catch((error) => {
-      console.error('Error accessing camera: ', error);
+      console.error('Errore nell\'accesso alla fotocamera: ', error);
     });
 
   function detectFeatures() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Convert to grayscale
+    // Controllo della qualità dell'immagine
+    console.log('Dati immagine:', imageData.data.slice(0, 100)); // Stampa i primi 100 pixel
+
+    // Converti in scala di grigi
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
 
-    // Detect keypoints
+    // Disegna immagine in scala di grigi sul canvas per visualizzazione
+    const imageDataGray = ctx.createImageData(canvas.width, canvas.height);
+    for (let i = 0; i < img_u8.data.length; i++) {
+      imageDataGray.data[i * 4] = img_u8.data[i]; // Red
+      imageDataGray.data[i * 4 + 1] = img_u8.data[i]; // Green
+      imageDataGray.data[i * 4 + 2] = img_u8.data[i]; // Blue
+      imageDataGray.data[i * 4 + 3] = 255; // Alpha
+    }
+    ctx.putImageData(imageDataGray, 0, 0);  // Visualizza l'immagine in scala di grigi
+
+    // Rileva i keypoints
+    jsfeat.yape06.laplacian_threshold = 30;  // Imposta una soglia più bassa
+    jsfeat.yape06.min_eigen_value_threshold = 25;  // Riduci soglia per maggiore sensibilità
     const count = jsfeat.yape06.detect(img_u8, corners, 500);
 
     console.log(`Numero di punti rilevati: ${count}`);
@@ -128,86 +132,40 @@
     return points;
   }
 
-  function clusterPoints(points, clusterRadius) {
-    // Simple clustering based on proximity
-    const clusters = [];
-    for (let i = 0; i < points.length; i++) {
-      let foundCluster = false;
-      for (let j = 0; j < clusters.length; j++) {
-        const dist = Math.sqrt(
-          Math.pow(points[i].x - clusters[j].x, 2) +
-          Math.pow(points[i].y - clusters[j].y, 2)
-        );
-        if (dist < clusterRadius) {
-          clusters[j].points.push(points[i]);
-          clusters[j].x = (clusters[j].x * clusters[j].points.length + points[i].x) / (clusters[j].points.length + 1);
-          clusters[j].y = (clusters[j].y * clusters[j].points.length + points[i].y) / (clusters[j].points.length + 1);
-          foundCluster = true;
-          break;
-        }
-      }
-      if (!foundCluster) {
-        clusters.push({ x: points[i].x, y: points[i].y, points: [points[i]] });
-      }
+  function estimateCameraPose(points) {
+    if (points.length > 0) {
+      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
+      const x3D = (avgX / canvas.width) * 10 - 5;
+      const y3D = (avgY / canvas.height) * 10 - 5;
+
+      // Estimate Z based on a constant or a heuristic
+      const zEstimate = depthScale;
+
+      // Apply smoothing
+      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
+      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
+      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
+
+      // Update camera position
+      camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
+      
+      console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
+      
+      lastX = smoothedX;
+      lastY = smoothedY;
+      lastZ = smoothedZ;
+    } else {
+      console.log("Nessun punto rilevato.");
     }
-
-    console.log(`Numero di cluster identificati: ${clusters.length}`);
-
-    return clusters;
-  }
-
-  function estimatePlanePose(cluster) {
-    if (cluster.points.length > 0) {
-      const avgX = cluster.points.reduce((sum, p) => sum + p.x, 0) / cluster.points.length;
-      const avgY = cluster.points.reduce((sum, p) => sum + p.y, 0) / cluster.points.length;
-
-      // Map 2D screen coordinates to a 3D position in the A-Frame scene
-      const x3D = (avgX / canvas.width) * 4 - 2;  // Adjust these scaling factors as necessary
-      const y3D = -(avgY / canvas.height) * 4 + 2; // Y axis is inverted in screen space
-
-      // Fixed depth for now; this can be dynamic based on clustering data
-      const zEstimate = -4;  // Keep model in front of the camera at a fixed distance
-
-      console.log(`Piano stimato alle coordinate: X=${x3D}, Y=${y3D}, Z=${zEstimate}`);
-
-      return { x: x3D, y: y3D, z: zEstimate };
-    }
-    return lastPlanePosition;
   }
 
   function processVideo() {
-    try {
-      const points = detectFeatures();
-
-      // Cluster the points to identify planes
-      const clusters = clusterPoints(points, 20);  // Adjust cluster radius for sensitivity
-
-      if (clusters.length > 0) {
-        // Choose the largest cluster as the detected plane
-        let largestCluster = clusters.reduce((max, cluster) => cluster.points.length > max.points.length ? cluster : max);
-
-        const planePose = estimatePlanePose(largestCluster);
-
-        // Update the model position to be on the detected plane
-        model.setAttribute('position', `${planePose.x} ${planePose.y} ${planePose.z}`);
-        lastPlanePosition = planePose;
-
-        // Display feedback when a plane is detected
-        feedback.style.display = 'block';
-        setTimeout(() => {
-          feedback.style.display = 'none';
-        }, 2000);  // Hide the message after 2 seconds
-
-        console.log(`Modello posizionato su: X=${planePose.x}, Y=${planePose.y}, Z=${planePose.z}`);
-      } else {
-        feedback.style.display = 'none';  // Hide feedback if no plane is detected
-        console.log("Nessun piano rilevato in questo frame.");
-      }
-
-      requestAnimationFrame(processVideo);
-    } catch (error) {
-      console.error("Errore durante il processo di video:", error);
-    }
+    const points = detectFeatures();
+    estimateCameraPose(points);
+    requestAnimationFrame(processVideo);
   }
 </script>
 
