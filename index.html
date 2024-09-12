@@ -101,8 +101,6 @@
     function detectFeatures() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      console.log('Larghezza canvas:', canvas.width, 'Altezza canvas:', canvas.height);
-      console.log('Dati immagine (prime 100):', imageData.data.slice(0, 100));
 
       // Convert the image to grayscale and increase contrast
       jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
