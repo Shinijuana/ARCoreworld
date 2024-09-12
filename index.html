@@ -1,69 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Astronave con SLAM</title>
-  
-  <!-- A-Frame for rendering the scene -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  
-  <!-- jsfeat library for feature detection and tracking -->
-  <script src="https://cdn.jsdelivr.net/npm/jsfeat@0.0.8/build/jsfeat.min.js"></script>
-
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-    #video, #canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 0;
-    }
-    a-scene {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1;
-      overflow: hidden;
-    }
-  </style>
-</head>
-<body style="margin: 0; overflow: hidden;">
-
-<!-- A-Frame Scene -->
-<a-scene embedded 
-         renderer="colorManagement: true, physicallyCorrectLights" 
-         vr-mode-ui="enabled: false" 
-         device-orientation-permission-ui="enabled: false">
-    
-  <a-assets>
-      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
-  </a-assets>
-
-  <!-- Astronave Model at fixed position -->
-  <a-entity id="astronave" position="0 0 -10" gltf-model="#astro" scale="1 1 1"></a-entity>
-
-  <!-- Camera for AR scene -->
-  <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false"></a-camera>
-  
-</a-scene>
-
-<!-- Video Feed from Camera -->
-<video id="video" autoplay></video>
-<canvas id="canvas"></canvas>
-
 <script type="text/javascript">
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');  // Camera entity
+  const camera = document.getElementById('ar-camera');
 
   // Initialize jsfeat variables
   const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
@@ -74,84 +13,66 @@
 
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
-  const depthScale = 1; // Adjust this scale based on your environment
+  const depthScale = 1;
 
-  // Video stream setup
   navigator.mediaDevices.getUserMedia({ 
     video: true
   })
-    .then((stream) => {
-      video.srcObject = stream;
-
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        video.play();
-      });
-
-      video.addEventListener('play', () => {
-        processVideo();
-      });
-    })
-    .catch((error) => {
-      console.error('Errore nell\'accesso alla fotocamera: ', error);
+  .then((stream) => {
+    video.srcObject = stream;
+    video.addEventListener('loadedmetadata', () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      video.play();
     });
+    video.addEventListener('play', () => {
+      processVideo();
+    });
+  })
+  .catch((error) => {
+    console.error('Errore nell\'accesso alla fotocamera: ', error);
+  });
 
   function detectFeatures() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    console.log('Larghezza canvas:', canvas.width, 'Altezza canvas:', canvas.height);
+    console.log('Dati immagine (prime 100):', imageData.data.slice(0, 100));
 
-    // Controllo della qualità dell'immagine
-    console.log('Dati immagine:', imageData.data.slice(0, 100)); // Stampa i primi 100 pixel
-
-    // Converti in scala di grigi
     jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
+    jsfeat.imgproc.equalize_histogram(img_u8, img_u8); // Aumenta il contrasto
 
-    // Disegna immagine in scala di grigi sul canvas per visualizzazione
-    const imageDataGray = ctx.createImageData(canvas.width, canvas.height);
-    for (let i = 0; i < img_u8.data.length; i++) {
-      imageDataGray.data[i * 4] = img_u8.data[i]; // Red
-      imageDataGray.data[i * 4 + 1] = img_u8.data[i]; // Green
-      imageDataGray.data[i * 4 + 2] = img_u8.data[i]; // Blue
-      imageDataGray.data[i * 4 + 3] = 255; // Alpha
-    }
-    ctx.putImageData(imageDataGray, 0, 0);  // Visualizza l'immagine in scala di grigi
-
-    // Rileva i keypoints
-    jsfeat.yape06.laplacian_threshold = 30;  // Imposta una soglia più bassa
-    jsfeat.yape06.min_eigen_value_threshold = 25;  // Riduci soglia per maggiore sensibilità
+    jsfeat.yape06.laplacian_threshold = 20;  
+    jsfeat.yape06.min_eigen_value_threshold = 10;  
     const count = jsfeat.yape06.detect(img_u8, corners, 500);
 
     console.log(`Numero di punti rilevati: ${count}`);
-
-    const points = [];
-    for (let i = 0; i < count; i++) {
-      points.push({ x: corners[i].x, y: corners[i].y });
+    if (count > 0) {
+      const points = [];
+      for (let i = 0; i < count; i++) {
+        points.push({ x: corners[i].x, y: corners[i].y });
+      }
+      console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
+      return points;
+    } else {
+      console.log('Nessun punto rilevato.');
+      return [];
     }
-
-    return points;
   }
 
   function estimateCameraPose(points) {
     if (points.length > 0) {
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      // Convert 2D screen position to 3D world position (adjust scaling as necessary)
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = (avgY / canvas.height) * 10 - 5;
-
-      // Estimate Z based on a constant or a heuristic
       const zEstimate = depthScale;
 
-      // Apply smoothing
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
       const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-      // Update camera position
       camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-      
       console.log(`Posizione della camera aggiornata: X=${smoothedX}, Y=${smoothedY}, Z=${smoothedZ}`);
       
       lastX = smoothedX;
@@ -168,6 +89,3 @@
     requestAnimationFrame(processVideo);
   }
 </script>
-
-</body>
-</html>
