@@ -105,33 +105,46 @@
       console.error('Errore nell\'accesso alla fotocamera: ', error);
     });
 
-    function detectFeatures() {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+function detectFeatures() {
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      const src = cv.matFromImageData(imageData);
-      const gray = new cv.Mat();
-      const corners = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
+  const src = cv.matFromImageData(imageData);
+  const gray = new cv.Mat();
+  const corners = new cv.Mat();
 
-      console.log(`Numero di punti rilevati: ${corners.rows}`);
+  // Converti l'immagine in scala di grigi
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-      if (corners.rows > 0) {
-        const points = [];
-        for (let i = 0; i < corners.rows; i++) {
-          const pt = corners.row(i).data32F;
-          points.push({ x: pt[0], y: pt[1] });
-        }
-        console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
-        return points;
-      } else {
-        console.log('Nessun punto rilevato.');
-        return [];
-      }
+  // Verifica che la matrice 'gray' sia valida prima di procedere
+  if (gray.empty()) {
+    console.error('L\'immagine in scala di grigi è vuota!');
+    src.delete();
+    gray.delete();
+    corners.delete();
+    return [];
+  }
 
-      src.delete(); gray.delete(); corners.delete();
+  // Usa goodFeaturesToTrack per rilevare i punti
+  cv.goodFeaturesToTrack(gray, corners, 500, 0.01, 10);
+  console.log(`Numero di punti rilevati: ${corners.rows}`);
+
+  if (corners.rows > 0) {
+    const points = [];
+    for (let i = 0; i < corners.rows; i++) {
+      const pt = corners.row(i).data32F;
+      points.push({ x: pt[0], y: pt[1] });
     }
+    console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
+    src.delete(); gray.delete(); corners.delete();
+    return points;
+  } else {
+    console.log('Nessun punto rilevato.');
+    src.delete(); gray.delete(); corners.delete();
+    return [];
+  }
+}
+
 
     function estimateCameraPose(points) {
       if (points.length > 0) {
