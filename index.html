@@ -68,12 +68,8 @@
     const camera = document.getElementById('ar-camera');
 
     // Initialize jsfeat variables
-    const img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+    let img_u8 = null;
     const corners = [];
-    for (let i = 0; i < canvas.width * canvas.height; i++) {
-      corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
-    }
-
     let lastX = 0, lastY = 0, lastZ = 0;
     const smoothingFactor = 0.1;
     const depthScale = 1;
@@ -87,6 +83,10 @@
       video.addEventListener('loadedmetadata', () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
+        img_u8 = new jsfeat.matrix_t(canvas.width, canvas.height, jsfeat.U8_t | jsfeat.C1_t);
+        for (let i = 0; i < canvas.width * canvas.height; i++) {
+          corners[i] = new jsfeat.keypoint_t(0, 0, 0, 0);
+        }
         video.play();
       });
       video.addEventListener('play', () => {
@@ -102,6 +102,10 @@
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
+      // Debug output
+      console.log('Larghezza canvas:', canvas.width, 'Altezza canvas:', canvas.height);
+      console.log('Dati immagine (prime 100):', imageData.data.slice(0, 100));
+
       // Convert the image to grayscale and increase contrast
       jsfeat.imgproc.grayscale(imageData.data, canvas.width, canvas.height, img_u8);
       jsfeat.imgproc.equalize_histogram(img_u8, img_u8); // Increase contrast
@@ -111,6 +115,7 @@
       jsfeat.yape06.min_eigen_value_threshold = 10;
       const count = jsfeat.yape06.detect(img_u8, corners, 500);
 
+      // Debug output
       console.log(`Numero di punti rilevati: ${count}`);
       if (count > 0) {
         const points = [];
