@@ -75,7 +75,7 @@
   const depthScale = 1; // Adjust this scale based on your environment
 
   navigator.mediaDevices.getUserMedia({ 
-    video: { facingMode: { exact: "environment" } }  // Use the rear camera
+    video: true  // Use the rear camera
   })
     .then((stream) => {
       video.srcObject = stream;
