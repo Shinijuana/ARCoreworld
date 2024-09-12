@@ -134,11 +134,9 @@ function initializeApp() {
         const pt = corners.row(i).data32F;
         points.push({ x: pt[0], y: pt[1] });
       }
-      console.log('Punti rilevati:', points.map(p => `(${p.x}, ${p.y})`));
       src.delete(); gray.delete(); corners.delete();
       return points;
     } else {
-      console.log('Nessun punto rilevato.');
       src.delete(); gray.delete(); corners.delete();
       return [];
     }
@@ -151,8 +149,8 @@ function initializeApp() {
 
       // Calcolo della posizione 3D stimata basata sui punti rilevati
       const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = (avgY / canvas.height) * 10 - 5;
-      const zEstimate = depthScale;
+      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);  // Y non può scendere sotto 0
+      const zEstimate = (avgX / canvas.width) * 10 - 5;
 
       // Smussamento per evitare salti bruschi
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
@@ -176,9 +174,9 @@ function initializeApp() {
     }
   }
 
-  // La funzione per ancorare l'astronave sarà eseguita una sola volta
-  function anchorAstronave() {
-    if (!isPlaneAnchored) {
+  // La funzione per ancorare l'astronave sarà eseguita solo quando viene rilevato un piano
+  function anchorAstronave(points) {
+    if (!isPlaneAnchored && points.length > 20) { // Ad esempio, richiedi almeno 20 punti per il piano
       astronave.setAttribute('position', `${anchorX} ${anchorY} ${anchorZ}`);
       console.log(`Astronave ancorata a: X=${anchorX}, Y=${anchorY}, Z=${anchorZ}`);
       isPlaneAnchored = true;
@@ -188,7 +186,7 @@ function initializeApp() {
   function processVideo() {
     const points = detectFeatures();
     if (!isPlaneAnchored) {
-      anchorAstronave();  // L'ancoraggio avviene solo una volta
+      anchorAstronave(points);  // L'ancoraggio avviene solo quando viene rilevato un piano
     }
     estimateCameraPose(points); // Aggiorniamo la posizione della camera
     requestAnimationFrame(processVideo);
