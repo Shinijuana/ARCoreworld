@@ -16,7 +16,7 @@
       margin: 0;
       overflow: hidden;
     }
-    #video, #canvas {
+    #video, #canvas, #debugCanvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -34,9 +34,6 @@
       overflow: hidden;
     }
     #debugCanvas {
-      position: absolute;
-      top: 0;
-      left: 0;
       z-index: 2;
       pointer-events: none;
     }
@@ -252,19 +249,20 @@ function initializeApp() {
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
       const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
+      const y3D = -(avgY / canvas.height) * 10 + 5;
 
       // Posizione con smoothing
       const smoothedX = lastX + (x3D - lastX) * smoothingFactor;
       const smoothedY = lastY + (y3D - lastY) * smoothingFactor;
-      const smoothedZ = lastZ + (depthScale - lastZ) * smoothingFactor;
+
+      // Modifica: Manteniamo Z costante per ora
+      const smoothedZ = -10; 
 
       // Aggiorna la posizione dell'astronave
-      astronave.setAttribute('position', `${smoothedX * 0.5} ${smoothedY * 0.5} ${smoothedZ}`);
+      astronave.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
 
       lastX = smoothedX;
       lastY = smoothedY;
-      lastZ = smoothedZ;
     }
   }
 
@@ -273,38 +271,9 @@ function initializeApp() {
     const plane = estimate3DPlaneRANSAC(points);
     estimateCameraPose(points);
 
-    if (!isPlaneAnchored && plane) {
-      isPlaneAnchored = true;
-      const avgPlane = accumulateAndAveragePlanes(plane);
-      // Applica la media al piano (logica aggiuntiva da implementare qui)
-    }
-
     requestAnimationFrame(processVideo);
   }
-
-  function accumulateAndAveragePlanes(newPlane) {
-    if (accumulatedPlanes.length >= numFramesToAverage) {
-      accumulatedPlanes.shift();
-    }
-    accumulatedPlanes.push(newPlane);
-
-    const avgPlane = accumulatedPlanes.reduce((acc, plane) => {
-      acc.A += plane.A;
-      acc.B += plane.B;
-      acc.C += plane.C;
-      acc.D += plane.D;
-      return acc;
-    }, { A: 0, B: 0, C: 0, D: 0 });
-
-    return {
-      A: avgPlane.A / accumulatedPlanes.length,
-      B: avgPlane.B / accumulatedPlanes.length,
-      C: avgPlane.C / accumulatedPlanes.length,
-      D: avgPlane.D / accumulatedPlanes.length
-    };
-  }
 }
-
 </script>
 </body>
 </html>
