@@ -74,7 +74,7 @@
 
 <script type="text/javascript">
 let cvLoaded = false;
-let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
+let isPlaneAnchored = false;
 
 // Coordinate fisse dell'astronave nel mondo 3D
 const anchorX = 0, anchorY = 0, anchorZ = -10;
@@ -96,11 +96,15 @@ function initializeApp() {
   const debugCtx = debugCanvas.getContext('2d');
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
-  const astronave = document.getElementById('astronave');
-
+  
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
   const depthScale = 1;
+
+  let previousPoints = [];
+  let previousPlane = null;
+  const frameInterval = 5;
+  let frameCount = 0;
 
   navigator.mediaDevices.getUserMedia({ 
     video: { facingMode: true }
@@ -130,9 +134,7 @@ function initializeApp() {
     const gray = new cv.Mat();
     const corners = new cv.Mat();
 
-    // Converti l'immagine in scala di grigi
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
     if (gray.empty()) {
       console.error('L\'immagine in scala di grigi è vuota!');
       src.delete();
@@ -141,13 +143,10 @@ function initializeApp() {
       return [];
     }
 
-    // Usa goodFeaturesToTrack per rilevare i punti
-    const maxCorners = 10000;  // Aumenta il numero massimo di punti
-    const qualityLevel = 0.001; // Mantieni la qualità bassa per rilevare più punti
-    const minDistance = 5;    // Riduci la distanza minima tra i punti
-
+    const maxCorners = 10000;
+    const qualityLevel = 0.001;
+    const minDistance = 5;
     cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
-    console.log(`Numero di punti rilevati: ${corners.rows}`);
 
     const points = [];
     for (let i = 0; i < corners.rows; i++) {
@@ -159,147 +158,115 @@ function initializeApp() {
     return points;
   }
 
- function filterPoints(points) {
-  // Filtra i punti fuori dai bordi dell'immagine
-  const filteredPoints = points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
-  
-  // Log dei punti filtrati
-  console.log('Punti filtrati:', filteredPoints);
-  return filteredPoints;
-}
+  function stabilizePoints(points, windowSize = 5) {
+    if (previousPoints.length >= windowSize) {
+      previousPoints.shift();
+    }
+    previousPoints.push(points);
 
-  function estimate3DPlane(points2D) {
-  const filteredPoints = filterPoints(points2D);
-
-  if (filteredPoints.length < 3) {
-    console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
-    return null;
+    const avgPoints = [];
+    for (let i = 0; i < points.length; i++) {
+      let sumX = 0, sumY = 0;
+      for (let j = 0; j < previousPoints.length; j++) {
+        sumX += previousPoints[j][i].x;
+        sumY += previousPoints[j][i].y;
+      }
+      avgPoints.push({
+        x: sumX / previousPoints.length,
+        y: sumY / previousPoints.length
+      });
+    }
+    return avgPoints;
   }
 
-  // Creiamo i punti 3D a partire da quelli 2D
-  const points3D = filteredPoints.map(p => ({
-    x: (p.x / canvas.width) * 10 - 5,
-    y: (p.y / canvas.height) * 10 - 5,
-    z: depthScale
-  }));
+  function estimate3DPlane(points2D) {
+    const filteredPoints = filterPoints(points2D);
+    if (filteredPoints.length < 3) {
+      console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
+      return null;
+    }
 
-  // Formiamo la matrice A e il vettore b per risolvere Ax = b
-  let A = [];
-  let b = [];
-  points3D.forEach(p => {
-    A.push([p.x, p.y, 1]);
-    b.push(-p.z);
-  });
+    const points3D = filteredPoints.map(p => ({
+      x: (p.x / canvas.width) * 10 - 5,
+      y: Math.max((p.y / canvas.height) * 10 - 5, 0),
+      z: depthScale
+    }));
 
-  // Usando OpenCV per risolvere il sistema di equazioni lineari
-  let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
-  let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
+    let A = [];
+    let b = [];
 
-  let matX = new cv.Mat();
-  try {
-    cv.solve(matA, matB, matX, cv.DECOMP_SVD); // Usa il metodo SVD per la soluzione
-  } catch (error) {
-    console.error('Errore nel calcolo dei coefficienti del piano:', error);
+    points3D.forEach(p => {
+      A.push([p.x, p.y, 1]);
+      b.push(-p.z);
+    });
+
+    let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
+    let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
+
+    let matX = new cv.Mat();
+    try {
+      cv.solve(matA, matB, matX, cv.DECOMP_SVD);
+    } catch (error) {
+      console.error('Errore nel calcolo dei coefficienti del piano:', error);
+      matA.delete();
+      matB.delete();
+      matX.delete();
+      return null;
+    }
+
+    let planeCoefficients = matX.data32F;
+
     matA.delete();
     matB.delete();
     matX.delete();
-    return null;
+
+    return {
+      A: planeCoefficients[0],
+      B: planeCoefficients[1],
+      D: planeCoefficients[2]
+    };
   }
 
-  // Coefficienti del piano
-  const planeCoefficients = matX.data32F;
-
-  matA.delete();
-  matB.delete();
-  matX.delete();
-
-  if (planeCoefficients.length < 3) {
-    console.error('Errore nel calcolo dei coefficienti del piano.');
-    return null;
-  }
-
-  return {
-    A: planeCoefficients[0],
-    B: planeCoefficients[1],
-    C: 1,  // Normalizziamo C a 1 per un piano Ax + By + C = D
-    D: planeCoefficients[2]
-  };
-}
-
-
- function drawDebug(points, plane) {
-  debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-  debugCtx.strokeStyle = 'red';
-  debugCtx.fillStyle = 'red';
-  debugCtx.lineWidth = 2;
-
-  // Disegna i punti
-  points.forEach(p => {
-    debugCtx.beginPath();
-    debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-    debugCtx.fill();
-  });
-
-  // Disegna il piano stimato, se esiste
-  if (plane) {
-    console.log('Disegno del piano con A:', plane.A, 'B:', plane.B, 'D:', plane.D);
-    
-    debugCtx.strokeStyle = 'blue';
-    debugCtx.beginPath();
-    debugCtx.moveTo(0, -plane.D / plane.B);
-    debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B);
-    debugCtx.stroke();
-  }
-}
-
-
-  function estimateCameraPose(points) {
-    if (points.length > 1000) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const zEstimate = depthScale;
-
-      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
-
-      camera.setAttribute('position', `${smoothedX * 10} ${Math.max(smoothedY * 10, 0)} ${smoothedZ}`);
-      console.log(`Posizione della camera aggiornata: X=${smoothedX * 10}, Y=${Math.max(smoothedY * 10, 0)}, Z=${smoothedZ}`);
-
-      lastX = smoothedX;
-      lastY = smoothedY;
-      lastZ = smoothedZ;
+  function smoothPlane(plane, alpha = 0.1) {
+    if (!previousPlane) {
+      previousPlane = plane;
     } else {
-      console.log("Nessun punto rilevato.");
+      plane.A = alpha * plane.A + (1 - alpha) * previousPlane.A;
+      plane.B = alpha * plane.B + (1 - alpha) * previousPlane.B;
+      plane.D = alpha * plane.D + (1 - alpha) * previousPlane.D;
+    }
+    previousPlane = plane;
+    return plane;
+  }
+
+  function drawDebug(points, plane) {
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+    debugCtx.strokeStyle = 'red';
+    debugCtx.fillStyle = 'red';
+    debugCtx.lineWidth = 2;
+
+    points.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+      debugCtx.fill();
+    });
+
+    if (plane) {
+      debugCtx.strokeStyle = 'blue';
+      debugCtx.beginPath();
+      debugCtx.moveTo(0, -plane.D / plane.B);
+      debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B);
+      debugCtx.stroke();
     }
   }
 
-  function anchorPlane(points, plane) {
-    if (plane) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const newX = (avgX / canvas.width) * 10 - 5;
-      const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const newZ = 9;  // Imposta Z fisso
-
-      // Ancoraggio del piano
-      document.addEventListener('click', function () {
-        if (!isPlaneAnchored) {
-          const planeElement = document.createElement('a-plane');
-          planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
-          planeElement.setAttribute('width', '10');
-          planeElement.setAttribute('height', '10');
-          planeElement.setAttribute('color', '#00ff00');
-          document.querySelector('a-scene').appendChild(planeElement);
-          isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
-          console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
-        }
-      });
+  function updatePlaneIfNecessary(points2D) {
+    frameCount++;
+    if (frameCount % frameInterval === 0) {
+      const plane = estimate3DPlane(points2D);
+      return smoothPlane(plane);
     }
+    return previousPlane;
   }
 
   function processVideo() {
@@ -308,20 +275,18 @@ function initializeApp() {
       return;
     }
 
-    const points = detectFeatures();
-    console.log('Punti rilevati:', points);
-
-    const planeCoefficients = estimate3DPlane(points);
-    if (planeCoefficients) {
-      console.log('Coefficiente piano stimato:', planeCoefficients);
-    }
-
-    estimateCameraPose(points);
-    anchorPlane(points, planeCoefficients);
+    const points = stabilizePoints(detectFeatures());
+    const planeCoefficients = updatePlaneIfNecessary(points);
     drawDebug(points, planeCoefficients);
-
+    
     requestAnimationFrame(processVideo);
   }
+}
+
+if (window.cv && window.cv.getBuildInformation) {
+  onOpenCvReady();
+} else {
+  console.error('OpenCV.js non è caricato.');
 }
 
 </script>
