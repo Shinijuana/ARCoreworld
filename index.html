@@ -170,16 +170,20 @@ function initializeApp() {
       return null;
     }
 
-    const points3D = points2D.map(p => ({
+    // Trasforma i punti 2D in punti 3D
+    const points3D = points2D.map(p => ( {
       x: (p.x / canvas.width) * 10 - 5,
       y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-      z: (p.x / canvas.width) * 5 // Modifica questo calcolo in base alle tue necessità
+      z: depthScale
     }));
 
     console.log('Punti 3D:', points3D);
 
     const A = points3D.map(p => [p.x, p.y, 1]);
     const b = points3D.map(p => -p.z);
+
+    console.log('MatA:', A);
+    console.log('MatB:', b);
 
     let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
     let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
@@ -215,32 +219,6 @@ function initializeApp() {
     };
   }
 
-  function calculateZEstimate(points, planeCoefficients) {
-    if (!planeCoefficients) {
-      console.error('Coefficiente del piano non disponibile.');
-      return 0;
-    }
-
-    const { A, B, C, D } = planeCoefficients;
-    
-    let zSum = 0;
-    points.forEach(p => {
-      // Trasforma le coordinate 2D in coordinate 3D utilizzando il piano stimato
-      const x3D = (p.x / canvas.width) * 10 - 5;
-      const y3D = Math.max((p.y / canvas.height) * 10 - 5, 0);
-      
-      // Calcola Z utilizzando l'equazione del piano: A*x + B*y + C*z + D = 0
-      const z = -(A * x3D + B * y3D + D) / C;
-      
-      zSum += z;
-    });
-
-    const averageZ = zSum / points.length;
-
-    console.log(`Stima media della profondità Z: ${averageZ}`);
-    return averageZ;
-  }
-
   function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
     debugCtx.strokeStyle = 'red';
@@ -269,7 +247,7 @@ function initializeApp() {
 
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const zEstimate = calculateZEstimate(points, planeCoefficients); // Usa una funzione per calcolare Z
+      const zEstimate = 0;
 
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
@@ -328,6 +306,7 @@ function initializeApp() {
   }
 }
 </script>
+
 
 
 </body>
