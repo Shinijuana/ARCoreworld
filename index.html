@@ -33,6 +33,13 @@
       z-index: 1;
       overflow: hidden;
     }
+    #debugCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -61,9 +68,10 @@
 <!-- Video Camera Feed -->
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
+<canvas id="debugCanvas"></canvas>
 
 <script type="text/javascript">
- let cvLoaded = false;
+let cvLoaded = false;
 let isPlaneAnchored = false;
 
 // Coordinate fisse astronave
@@ -82,19 +90,11 @@ function onOpenCvError() {
 function initializeApp() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  const debugCanvas = document.createElement('canvas'); // Canvas di debug
+  const debugCanvas = document.getElementById('debugCanvas');
   const debugCtx = debugCanvas.getContext('2d');
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
   const astronave = document.getElementById('astronave');
-
-  debugCanvas.style.position = 'absolute';
-  debugCanvas.style.top = '0';
-  debugCanvas.style.left = '0';
-  debugCanvas.style.width = '100vw';
-  debugCanvas.style.height = '100vh';
-  debugCanvas.style.pointerEvents = 'none';
-  document.body.appendChild(debugCanvas);
 
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
@@ -153,6 +153,15 @@ function initializeApp() {
       const pt = corners.row(i).data32F;
       points.push({ x: pt[0], y: pt[1] });
     }
+
+    // Disegno punti su debugCanvas
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+    debugCtx.strokeStyle = 'red';
+    points.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+      debugCtx.stroke();
+    });
 
     src.delete(); gray.delete(); corners.delete();
     return points;
@@ -244,14 +253,15 @@ function initializeApp() {
 
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const zEstimate = depthScale;
 
-      const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
-      const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
-      const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
+      // Posizione con smoothing
+      const smoothedX = lastX + (x3D - lastX) * smoothingFactor;
+      const smoothedY = lastY + (y3D - lastY) * smoothingFactor;
+      const smoothedZ = lastZ + (depthScale - lastZ) * smoothingFactor;
 
-      camera.setAttribute('position', `${smoothedX * 0.5} ${smoothedY * 0.5} ${smoothedZ}`);
-      
+      // Aggiorna la posizione dell'astronave
+      astronave.setAttribute('position', `${smoothedX * 0.5} ${smoothedY * 0.5} ${smoothedZ}`);
+
       lastX = smoothedX;
       lastY = smoothedY;
       lastZ = smoothedZ;
