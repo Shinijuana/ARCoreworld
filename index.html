@@ -164,7 +164,7 @@ function initializeApp() {
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
   }
 
- function estimate3DPlane(points2D) function estimate3DPlane(points2D) {
+  function estimate3DPlane(points2D) {
     const filteredPoints = filterPoints(points2D);
     if (filteredPoints.length < 3) {
         console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
@@ -217,11 +217,9 @@ function initializeApp() {
         C: planeCoefficients[2],
         D: -planeCoefficients[3] // Aggiungi un segno corretto a D
     };
-}
+  }
 
-
-
-function drawDebug(points, plane) {
+  function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
     debugCtx.strokeStyle = 'red';
     debugCtx.fillStyle = 'red';
@@ -243,9 +241,9 @@ function drawDebug(points, plane) {
         debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B); // X-intercept
         debugCtx.stroke();
     }
-}
+  }
 
-function estimateCameraPose(points) {
+  function estimateCameraPose(points) {
     if (points.length > 100) { // Riduci il numero minimo di punti
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
         const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
@@ -267,10 +265,9 @@ function estimateCameraPose(points) {
     } else {
         console.log("Nessun punto rilevato.");
     }
-}
+  }
 
-
-function anchorPlane(points, plane) {
+  function anchorPlane(points, plane) {
     if (plane && !isPlaneAnchored) {
         const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
         const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
@@ -289,8 +286,7 @@ function anchorPlane(points, plane) {
         isPlaneAnchored = true; // Assicurati che il piano sia ancorato solo una volta
         console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
     }
-}
-
+  }
 
   function processVideo() {
     if (!cvLoaded) {
