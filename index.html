@@ -73,22 +73,6 @@
 <canvas id="debugCanvas"></canvas>
 
 <script type="text/javascript">
-let cvLoaded = false;
-let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
-
-// Coordinate fisse dell'astronave nel mondo 3D
-const anchorX = 0, anchorY = 0, anchorZ = -10;
-
-function onOpenCvReady() {
-  cvLoaded = true;
-  console.log('OpenCV.js is ready.');
-  initializeApp();
-}
-
-function onOpenCvError() {
-  console.error('OpenCV.js failed to load.');
-}
-
 function initializeApp() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
@@ -142,9 +126,9 @@ function initializeApp() {
     }
 
     // Usa goodFeaturesToTrack per rilevare i punti
-    const maxCorners = 10000;  // Aumenta il numero massimo di punti
-    const qualityLevel = 0.001; // Mantieni la qualità bassa per rilevare più punti
-    const minDistance = 5;    // Riduci la distanza minima tra i punti
+    const maxCorners = 10000;
+    const qualityLevel = 0.01;  // Aumentato per ridurre il rumore
+    const minDistance = 5;
 
     cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
     console.log(`Numero di punti rilevati: ${corners.rows}`);
@@ -160,7 +144,6 @@ function initializeApp() {
   }
 
   function filterPoints(points) {
-    // Aggiungi logica per filtrare punti che potrebbero essere rumore
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
   }
 
@@ -171,9 +154,10 @@ function initializeApp() {
       return null;
     }
 
+    // Modificato per ridurre l'impatto sull'asse Y
     const points3D = filteredPoints.map(p => ({
       x: (p.x / canvas.width) * 10 - 5,
-      y: Math.max((p.y / canvas.height) * 10 - 5, 0),
+      y: 0,  // Riduci l'impatto dell'asse Y
       z: depthScale
     }));
 
@@ -201,7 +185,8 @@ function initializeApp() {
 
     let planeCoefficients = matX.data32F;
 
-    if (planeCoefficients.length < 4) {
+    // Verifica della validità dei coefficienti
+    if (planeCoefficients.length < 4 || Math.abs(planeCoefficients[0]) < 0.01 && Math.abs(planeCoefficients[1]) < 0.01) {
       console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
       matA.delete();
       matB.delete();
@@ -227,14 +212,12 @@ function initializeApp() {
     debugCtx.fillStyle = 'red';
     debugCtx.lineWidth = 2;
 
-    // Disegna i punti
     points.forEach(p => {
       debugCtx.beginPath();
       debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
       debugCtx.fill();
     });
 
-    // Disegna il piano stimato, se esiste
     if (plane) {
       debugCtx.strokeStyle = 'blue';
       debugCtx.beginPath();
@@ -269,25 +252,29 @@ function initializeApp() {
   }
 
   function anchorPlane(points, plane) {
-    if (plane) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const newX = (avgX / canvas.width) * 10 - 5;
-      const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const newZ = 9;  // Imposta Z fisso
-
-      // Ancoraggio del piano
+    if (plane && !isPlaneAnchored) {
       document.addEventListener('click', function () {
         if (!isPlaneAnchored) {
-          const planeElement = document.createElement('a-plane');
-          planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
-          planeElement.setAttribute('width', '10');
-          planeElement.setAttribute('height', '10');
-          planeElement.setAttribute('color', '#00ff00');
-          document.querySelector('a-scene').appendChild(planeElement);
-          isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
-          console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
+          // Verifica che i coefficienti del piano siano validi
+          if (plane.A !== 0 && plane.B !== 0 && plane.C !== 0) {
+            const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+            const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+            const newX = (avgX / canvas.width) * 10 - 5;
+            const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
+            const newZ = 9;  // Imposta Z fisso
+
+            const planeElement = document.createElement('a-plane');
+            planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
+            planeElement.setAttribute('width', '10');
+            planeElement.setAttribute('height', '10');
+            planeElement.setAttribute('color', '#00ff00');
+            document.querySelector('a-scene').appendChild(planeElement);
+            isPlaneAnchored = true;
+            console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
+          } else {
+            console.error('Errore nel calcolo del piano, nessun ancoraggio eseguito.');
+          }
         }
       });
     }
@@ -304,7 +291,7 @@ function initializeApp() {
 
     const planeCoefficients = estimate3DPlane(points);
     if (planeCoefficients) {
-      anchorPlane(points, planeCoefficients); // Ancoraggio solo se il piano è stato calcolato
+      anchorPlane(points, planeCoefficients);
     }
 
     estimateCameraPose(points);
@@ -313,11 +300,6 @@ function initializeApp() {
   }
 }
 
-if (window.cv && window.cv.getBuildInformation) {
-  onOpenCvReady();
-} else {
-  console.error('OpenCV.js non è caricato.');
-}
 </script>
 
 </body>
