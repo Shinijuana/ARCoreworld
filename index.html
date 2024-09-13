@@ -227,7 +227,30 @@ function initializeApp() {
       const y = -plane.B / plane.C * depthScale;
       const z = depthScale;
       
-      astronave.setAttribute('position', { x, y, z });
+      astronave.setAttribute('position', `${x} ${y} ${z}`);
+    }
+  }
+
+  function drawDebug(points, plane) {
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+    debugCtx.strokeStyle = 'red';
+    debugCtx.fillStyle = 'red';
+    debugCtx.lineWidth = 2;
+
+    // Disegna i punti
+    points.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+      debugCtx.fill();
+    });
+
+    // Disegna il piano stimato, se esiste
+    if (plane) {
+      debugCtx.strokeStyle = 'blue';
+      debugCtx.beginPath();
+      debugCtx.moveTo(0, -(plane.D + plane.A * 0) / plane.B);
+      debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B);
+      debugCtx.stroke();
     }
   }
 
@@ -245,8 +268,15 @@ function initializeApp() {
       frameCount = 0;  // Reset frame counter
     }
 
+    drawDebug(points2D, bestPlane);
     requestAnimationFrame(processVideo);
   }
+}
+
+if (window.cv && window.cv.getBuildInformation) {
+  onOpenCvReady();
+} else {
+  console.error('OpenCV.js non è caricato.');
 }
 </script>
 
