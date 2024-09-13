@@ -195,14 +195,45 @@ function initializeApp() {
       z: depthScale
     }));
 
-    // Implementazione RANSAC per stimare il piano
-    const plane = new cv.Plane();
-    const ransac = new cv.RANSAC();
-    const model = ransac.fitPlane(points3D);
+    // Calcola i coefficienti del piano con una semplice regressione
+    const A = [];
+    const B = [];
+    points3D.forEach(p => {
+      A.push([p.x, p.y, 1]);
+      B.push(-p.z);
+    });
 
-    console.log('Coefficiente piano stimato:', model);
+    const matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
+    const matB = cv.matFromArray(B.length, 1, cv.CV_32F, B);
+    const matX = new cv.Mat();
 
-    return model;
+    try {
+      cv.solve(matA, matB, matX, cv.DECOMP_SVD);
+    } catch (error) {
+      console.error('Errore nel calcolo dei coefficienti del piano:', error);
+      matA.delete();
+      matB.delete();
+      matX.delete();
+      return null;
+    }
+
+    const planeCoefficients = matX.data32F;
+
+    matA.delete();
+    matB.delete();
+    matX.delete();
+
+    if (planeCoefficients.length < 4) {
+      console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
+      return null;
+    }
+
+    return {
+      A: planeCoefficients[0],
+      B: planeCoefficients[1],
+      C: planeCoefficients[2],
+      D: -planeCoefficients[3]
+    };
   }
 
   function drawDebug(points, plane) {
