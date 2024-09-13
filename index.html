@@ -147,7 +147,7 @@ function initializeApp() {
     const minDistance = 5;    // Riduci la distanza minima tra i punti
 
     cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
-    console.log(Numero di punti rilevati: ${corners.rows});
+    console.log(`Numero di punti rilevati: ${corners.rows}`);
 
     const points = [];
     for (let i = 0; i < corners.rows; i++) {
@@ -257,8 +257,8 @@ function initializeApp() {
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
       const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-      camera.setAttribute('position', ${smoothedX * 10} ${Math.max(smoothedY * 10, 0)} ${smoothedZ});
-      console.log(Posizione della camera aggiornata: X=${smoothedX * 10}, Y=${Math.max(smoothedY * 10, 0)}, Z=${smoothedZ});
+      camera.setAttribute('position', `${smoothedX * 10} ${Math.max(smoothedY * 10, 0)} ${smoothedZ}`);
+      console.log(`Posizione della camera aggiornata: X=${smoothedX * 10}, Y=${Math.max(smoothedY * 10, 0)}, Z=${smoothedZ}`);
 
       lastX = smoothedX;
       lastY = smoothedY;
@@ -281,13 +281,13 @@ function initializeApp() {
       document.addEventListener('click', function () {
         if (!isPlaneAnchored) {
           const planeElement = document.createElement('a-plane');
-          planeElement.setAttribute('position', ${newX} ${newY} ${newZ});
+          planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
           planeElement.setAttribute('width', '10');
           planeElement.setAttribute('height', '10');
           planeElement.setAttribute('color', '#00ff00');
           document.querySelector('a-scene').appendChild(planeElement);
           isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
-          console.log(Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ});
+          console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
         }
       });
     }
@@ -304,20 +304,17 @@ function initializeApp() {
 
     const planeCoefficients = estimate3DPlane(points);
     if (planeCoefficients) {
-      anchorPlane(points, planeCoefficients); // Ancoraggio solo se il piano è stato calcolato
+      console.log('Coefficiente piano stimato:', planeCoefficients);
     }
 
     estimateCameraPose(points);
+    anchorPlane(points, planeCoefficients);
     drawDebug(points, planeCoefficients);
+
     requestAnimationFrame(processVideo);
   }
 }
 
-if (window.cv && window.cv.getBuildInformation) {
-  onOpenCvReady();
-} else {
-  console.error('OpenCV.js non è caricato.');
-}
 </script>
 
 </body>
