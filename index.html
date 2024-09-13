@@ -164,60 +164,63 @@ function initializeApp() {
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
   }
 
-  function estimate3DPlane(points2D) {
-    const filteredPoints = filterPoints(points2D);
-    if (filteredPoints.length < 3) {
-        console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
-        return null;
-    }
+function estimate3DPlane(points2D) {
+  const filteredPoints = filterPoints(points2D);
+  if (filteredPoints.length < 3) {
+    console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
+    return null;
+  }
 
-    const points3D = filteredPoints.map(p => ({
-        x: (p.x / canvas.width) * 10 - 5,
-        y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-        z: depthScale
-    }));
+  const points3D = filteredPoints.map(p => ({
+    x: (p.x / canvas.width) * 10 - 5,
+    y: Math.max((p.y / canvas.height) * 10 - 5, 0),
+    z: depthScale
+  }));
 
-    let A = [];
-    let b = [];
+  let A = [];
+  let b = [];
 
-    points3D.forEach(p => {
-        A.push([p.x, p.y, 1]);
-        b.push(-p.z);
-    });
+  points3D.forEach(p => {
+    A.push([p.x, p.y, 1]);
+    b.push(-p.z);
+  });
 
-    let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
-    let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
+  let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
+  let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
 
-    let matX = new cv.Mat();
-    try {
-        cv.solve(matA, matB, matX, cv.DECOMP_SVD);
-    } catch (error) {
-        console.error('Errore nel calcolo dei coefficienti del piano:', error);
-        matA.delete();
-        matB.delete();
-        matX.delete();
-        return null;
-    }
-
-    let planeCoefficients = matX.data32F;
-
+  let matX = new cv.Mat();
+  try {
+    cv.solve(matA, matB, matX, cv.DECOMP_SVD);
+  } catch (error) {
+    console.error('Errore nel calcolo dei coefficienti del piano:', error);
+    console.error('MatA:', A);
+    console.error('MatB:', b);
     matA.delete();
     matB.delete();
     matX.delete();
-
-    if (planeCoefficients.length < 4) {
-        console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
-        return null;
-    }
-
-    // Calcolo corretto di D
-    return {
-        A: planeCoefficients[0],
-        B: planeCoefficients[1],
-        C: planeCoefficients[2],
-        D: -planeCoefficients[3] // Aggiungi un segno corretto a D
-    };
+    return null;
   }
+
+  let planeCoefficients = matX.data32F;
+
+  matA.delete();
+  matB.delete();
+  matX.delete();
+
+  if (planeCoefficients.length < 4) {
+    console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
+    console.error('Coefficiente piano:', planeCoefficients);
+    return null;
+  }
+
+  return {
+    A: planeCoefficients[0],
+    B: planeCoefficients[1],
+    C: planeCoefficients[2],
+    D: -planeCoefficients[3] // Aggiungi un segno corretto a D
+  };
+}
+
 
   function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
