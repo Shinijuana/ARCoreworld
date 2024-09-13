@@ -177,6 +177,8 @@ function estimate3DPlane(points2D) {
     z: depthScale
   }));
 
+  console.log('Punti 3D:', points3D);
+
   let A = [];
   let b = [];
 
@@ -188,13 +190,14 @@ function estimate3DPlane(points2D) {
   let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
   let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
 
+  console.log('MatA:', A);
+  console.log('MatB:', b);
+
   let matX = new cv.Mat();
   try {
     cv.solve(matA, matB, matX, cv.DECOMP_SVD);
   } catch (error) {
     console.error('Errore nel calcolo dei coefficienti del piano:', error);
-    console.error('MatA:', A);
-    console.error('MatB:', b);
     matA.delete();
     matB.delete();
     matX.delete();
@@ -220,6 +223,7 @@ function estimate3DPlane(points2D) {
     D: -planeCoefficients[3] // Aggiungi un segno corretto a D
   };
 }
+
 
 
   function drawDebug(points, plane) {
