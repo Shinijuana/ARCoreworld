@@ -96,9 +96,9 @@ function initializeApp() {
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
   const depthScale = 1;
-  
-  let accumulatedPlanes = []; // Per mediare i risultati
-  const numFramesToAverage = 5;
+
+  let frameCount = 0;
+  const maxFramesToSkip = 10;  // Limita la frequenza del piano per evitare calcoli troppo frequenti
 
   navigator.mediaDevices.getUserMedia({ 
     video: { facingMode: true }
@@ -128,6 +128,7 @@ function initializeApp() {
     const gray = new cv.Mat();
     const corners = new cv.Mat();
 
+    // Converti l'immagine in scala di grigi
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
     if (gray.empty()) {
@@ -138,8 +139,9 @@ function initializeApp() {
       return [];
     }
 
-    const maxCorners = 1000;
-    const qualityLevel = 0.01;
+    // Usa goodFeaturesToTrack per rilevare i punti
+    const maxCorners = 10000;
+    const qualityLevel = 0.001; 
     const minDistance = 5;
 
     cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
@@ -151,15 +153,6 @@ function initializeApp() {
       points.push({ x: pt[0], y: pt[1] });
     }
 
-    // Disegno punti su debugCanvas
-    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-    debugCtx.strokeStyle = 'red';
-    points.forEach(p => {
-      debugCtx.beginPath();
-      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-      debugCtx.stroke();
-    });
-
     src.delete(); gray.delete(); corners.delete();
     return points;
   }
@@ -168,112 +161,94 @@ function initializeApp() {
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
   }
 
-  function estimate3DPlaneRANSAC(points2D) {
+  function estimate3DPlane(points2D) {
     const filteredPoints = filterPoints(points2D);
     if (filteredPoints.length < 3) {
       console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
       return null;
     }
 
-    let bestPlane = null;
-    let bestInliersCount = 0;
-    const iterations = 100;
-    const threshold = 0.01;
+    const points3D = filteredPoints.map(p => ({
+      x: (p.x / canvas.width) * 10 - 5,
+      y: Math.max((p.y / canvas.height) * 10 - 5, 0),
+      z: depthScale
+    }));
 
-    for (let i = 0; i < iterations; i++) {
-      const randomIndices = [];
-      while (randomIndices.length < 3) {
-        const rand = Math.floor(Math.random() * filteredPoints.length);
-        if (!randomIndices.includes(rand)) {
-          randomIndices.push(rand);
-        }
+    // Implementazione di RANSAC per trovare un piano
+    let bestInliers = 0;
+    let bestPlane = null;
+
+    for (let i = 0; i < 100; i++) {  // Iterazioni RANSAC
+      // Seleziona 3 punti casuali
+      const sample = [];
+      while (sample.length < 3) {
+        const randomIndex = Math.floor(Math.random() * points3D.length);
+        sample.push(points3D[randomIndex]);
       }
 
-      const sample = randomIndices.map(idx => filteredPoints[idx]);
-      const plane = estimate3DPlane(sample);
+      const plane = estimatePlaneFrom3Points(sample);
 
-      let inliersCount = 0;
-      filteredPoints.forEach(p => {
+      const inliers = points3D.filter(p => {
         const distance = Math.abs(plane.A * p.x + plane.B * p.y + plane.C * p.z + plane.D);
-        if (distance < threshold) {
-          inliersCount++;
-        }
+        return distance < 0.1;  // Tolleranza
       });
 
-      if (inliersCount > bestInliersCount) {
-        bestInliersCount = inliersCount;
+      if (inliers.length > bestInliers) {
+        bestInliers = inliers.length;
         bestPlane = plane;
       }
     }
 
-    console.log(`Miglior piano trovato con ${bestInliersCount} inliers.`);
+    console.log(`Miglior piano trovato con ${bestInliers} inliers.`);
+
     return bestPlane;
   }
 
-  function estimate3DPlane(points3D) {
-    if (points3D.length < 3) {
-      return null;
-    }
+  function estimatePlaneFrom3Points(points) {
+    const p1 = points[0], p2 = points[1], p3 = points[2];
+    const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+    const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
 
-    let A = [];
-    let b = [];
-
-    points3D.forEach(p => {
-      A.push([p.x, p.y, 1]);
-      b.push(-p.z);
-    });
-
-    let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
-    let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
-
-    let matX = new cv.Mat();
-    cv.solve(matA, matB, matX, cv.DECOMP_SVD);
-
-    let planeCoefficients = matX.data32F;
-
-    matA.delete();
-    matB.delete();
-    matX.delete();
-
-    return {
-      A: planeCoefficients[0],
-      B: planeCoefficients[1],
-      C: planeCoefficients[2],
-      D: planeCoefficients[3]
+    const normal = {
+      x: v1.y * v2.z - v1.z * v2.y,
+      y: v1.z * v2.x - v1.x * v2.z,
+      z: v1.x * v2.y - v1.y * v2.x
     };
+
+    const A = normal.x, B = normal.y, C = normal.z;
+    const D = -(A * p1.x + B * p1.y + C * p1.z);
+
+    return { A, B, C, D };
   }
 
-  function estimateCameraPose(points) {
-    if (points.length > 1000) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = -(avgY / canvas.height) * 10 + 5;
-
-      // Posizione con smoothing
-      const smoothedX = lastX + (x3D - lastX) * smoothingFactor;
-      const smoothedY = lastY + (y3D - lastY) * smoothingFactor;
-
-      // Modifica: Manteniamo Z costante per ora
-      const smoothedZ = -10; 
-
-      // Aggiorna la posizione dell'astronave
-      astronave.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
-
-      lastX = smoothedX;
-      lastY = smoothedY;
+  function updateAstronave(plane) {
+    if (plane) {
+      const x = -plane.A / plane.C * depthScale;
+      const y = -plane.B / plane.C * depthScale;
+      const z = depthScale;
+      
+      astronave.setAttribute('position', { x, y, z });
     }
   }
 
   function processVideo() {
-    const points = detectFeatures();
-    const plane = estimate3DPlaneRANSAC(points);
-    estimateCameraPose(points);
+    if (!cvLoaded) return;
+
+    const points2D = detectFeatures();
+    frameCount++;
+
+    if (frameCount >= maxFramesToSkip) {
+      const bestPlane = estimate3DPlane(points2D);
+      if (bestPlane) {
+        updateAstronave(bestPlane);
+      }
+      frameCount = 0;  // Reset frame counter
+    }
 
     requestAnimationFrame(processVideo);
   }
 }
 </script>
+
 </body>
 </html>
