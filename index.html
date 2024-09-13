@@ -187,11 +187,11 @@ function estimate3DPlane(points2D) {
     b.push(-p.z);
   });
 
-  let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
-  let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
-
   console.log('MatA:', A);
   console.log('MatB:', b);
+
+  let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
+  let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
 
   let matX = new cv.Mat();
   try {
@@ -220,10 +220,9 @@ function estimate3DPlane(points2D) {
     A: planeCoefficients[0],
     B: planeCoefficients[1],
     C: planeCoefficients[2],
-    D: -planeCoefficients[3] // Aggiungi un segno corretto a D
+    D: -planeCoefficients[3]
   };
 }
-
 
 
   function drawDebug(points, plane) {
