@@ -103,7 +103,7 @@ function initializeApp() {
   const depthScale = 1;
 
   navigator.mediaDevices.getUserMedia({ 
-    video: { facingMode: true }
+    video: { facingMode: "environment" }
   })
   .then((stream) => {
     video.srcObject = stream;
