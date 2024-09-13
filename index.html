@@ -99,9 +99,9 @@ function initializeApp() {
 
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
-  const depthScale = 1; // Tune this based on testing
+  const depthScale = 1;
 
-  navigator.mediaDevices.getUserMedia({ 
+  navigator.mediaDevices.getUserMedia({
     video: { facingMode: "environment" }
   })
   .then((stream) => {
@@ -122,38 +122,28 @@ function initializeApp() {
   });
 
   function detectFeatures() {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    try {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const src = cv.matFromImageData(imageData);
+      const gray = new cv.Mat();
+      const corners = new cv.Mat();
 
-    const src = cv.matFromImageData(imageData);
-    const gray = new cv.Mat();
-    const corners = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.goodFeaturesToTrack(gray, corners, 10000, 0.001, 5);
 
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      const points = [];
+      for (let i = 0; i < corners.rows; i++) {
+        const pt = corners.row(i).data32F;
+        points.push({ x: pt[0], y: pt[1] });
+      }
 
-    if (gray.empty()) {
-      console.error('L\'immagine in scala di grigi è vuota!');
-      src.delete();
-      gray.delete();
-      corners.delete();
+      src.delete(); gray.delete(); corners.delete();
+      return points;
+    } catch (error) {
+      console.error('Errore nel rilevamento delle caratteristiche: ', error);
       return [];
     }
-
-    const maxCorners = 10000;
-    const qualityLevel = 0.001;
-    const minDistance = 5;
-
-    cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
-    console.log(`Numero di punti rilevati: ${corners.rows}`);
-
-    const points = [];
-    for (let i = 0; i < corners.rows; i++) {
-      const pt = corners.row(i).data32F;
-      points.push({ x: pt[0], y: pt[1] });
-    }
-
-    src.delete(); gray.delete(); corners.delete();
-    return points;
   }
 
   function filterPoints(points) {
@@ -171,8 +161,6 @@ function initializeApp() {
       y: Math.max((p.y / canvas.height) * 10 - 5, 0),
       z: depthScale
     }));
-
-    console.log('Punti 3D:', points3D);
 
     const A = points3D.map(p => [p.x, p.y, 1]);
     const b = points3D.map(p => -p.z);
@@ -192,14 +180,12 @@ function initializeApp() {
     }
 
     const planeCoefficients = matX.data32F;
-
     matA.delete();
     matB.delete();
     matX.delete();
 
     if (planeCoefficients.length < 4) {
       console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
-      console.error('Coefficiente piano:', planeCoefficients);
       return null;
     }
 
@@ -239,7 +225,7 @@ function initializeApp() {
 
       const x3D = (avgX / canvas.width) * 10 - 5;
       const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const zEstimate = 5; // Example value, adjust based on depth data
+      const zEstimate = 0;
 
       const smoothedX = lastX * (1 - smoothingFactor) + x3D * smoothingFactor;
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
@@ -263,22 +249,17 @@ function initializeApp() {
 
       const newX = (avgX / canvas.width) * 10 - 5;
       const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const newZ = 9; // Example value, adjust based on depth data
+      const newZ = 9;
 
-      const existingPlane = document.querySelector('a-plane');
-      if (existingPlane) {
-        existingPlane.setAttribute('position', `${newX} ${newY} ${newZ}`);
-        console.log(`Piano aggiornato a: X=${newX}, Y=${newY}, Z=${newZ}`);
-      } else {
-        const planeElement = document.createElement('a-plane');
-        planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
-        planeElement.setAttribute('width', '10');
-        planeElement.setAttribute('height', '10');
-        planeElement.setAttribute('color', '#00ff00');
-        document.querySelector('a-scene').appendChild(planeElement);
-        isPlaneAnchored = true;
-        console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
-      }
+      const planeElement = document.createElement('a-plane');
+      planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
+      planeElement.setAttribute('width', '10');
+      planeElement.setAttribute('height', '10');
+      planeElement.setAttribute('color', '#00ff00');
+      document.querySelector('a-scene').appendChild(planeElement);
+
+      isPlaneAnchored = true;
+      console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
     }
   }
 
@@ -306,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
   script.onerror = onOpenCvError;
   document.head.appendChild(script);
 });
+
 </script>
 
 </body>
