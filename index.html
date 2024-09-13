@@ -159,90 +159,99 @@ function initializeApp() {
     return points;
   }
 
-  function filterPoints(points) {
-    // Aggiungi logica per filtrare punti che potrebbero essere rumore
-    return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
-  }
+ function filterPoints(points) {
+  // Filtra i punti fuori dai bordi dell'immagine
+  const filteredPoints = points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
+  
+  // Log dei punti filtrati
+  console.log('Punti filtrati:', filteredPoints);
+  return filteredPoints;
+}
 
   function estimate3DPlane(points2D) {
-    const filteredPoints = filterPoints(points2D);
-    if (filteredPoints.length < 3) {
-      console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
-      return null;
-    }
+  const filteredPoints = filterPoints(points2D);
 
-    const points3D = filteredPoints.map(p => ({
-      x: (p.x / canvas.width) * 10 - 5,
-      y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-      z: depthScale
-    }));
+  if (filteredPoints.length < 3) {
+    console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
+    return null;
+  }
 
-    let A = [];
-    let b = [];
+  // Creiamo i punti 3D a partire da quelli 2D
+  const points3D = filteredPoints.map(p => ({
+    x: (p.x / canvas.width) * 10 - 5,
+    y: (p.y / canvas.height) * 10 - 5,
+    z: depthScale
+  }));
 
-    points3D.forEach(p => {
-      A.push([p.x, p.y, 1]);
-      b.push(-p.z);
-    });
+  // Formiamo la matrice A e il vettore b per risolvere Ax = b
+  let A = [];
+  let b = [];
+  points3D.forEach(p => {
+    A.push([p.x, p.y, 1]);
+    b.push(-p.z);
+  });
 
-    let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
-    let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
+  // Usando OpenCV per risolvere il sistema di equazioni lineari
+  let matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
+  let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
 
-    let matX = new cv.Mat();
-    try {
-      cv.solve(matA, matB, matX, cv.DECOMP_SVD);
-    } catch (error) {
-      console.error('Errore nel calcolo dei coefficienti del piano:', error);
-      matA.delete();
-      matB.delete();
-      matX.delete();
-      return null;
-    }
-
-    let planeCoefficients = matX.data32F;
-
-    if (planeCoefficients.length < 4) {
-      console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
-      matA.delete();
-      matB.delete();
-      matX.delete();
-      return null;
-    }
-
+  let matX = new cv.Mat();
+  try {
+    cv.solve(matA, matB, matX, cv.DECOMP_SVD); // Usa il metodo SVD per la soluzione
+  } catch (error) {
+    console.error('Errore nel calcolo dei coefficienti del piano:', error);
     matA.delete();
     matB.delete();
     matX.delete();
-
-    return {
-      A: planeCoefficients[0],
-      B: planeCoefficients[1],
-      C: planeCoefficients[2],
-      D: planeCoefficients[3]
-    };
+    return null;
   }
 
-  function drawDebug(points, plane) {
-    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-    debugCtx.strokeStyle = 'red';
-    debugCtx.fillStyle = 'red';
-    debugCtx.lineWidth = 2;
+  // Coefficienti del piano
+  const planeCoefficients = matX.data32F;
 
-    // Disegna i punti
-    points.forEach(p => {
-      debugCtx.beginPath();
-      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-      debugCtx.fill();
-    });
+  matA.delete();
+  matB.delete();
+  matX.delete();
 
-    // Disegna il piano stimato, se esiste
-    if (plane) {
-      debugCtx.strokeStyle = 'blue';
-      debugCtx.beginPath();
-      debugCtx.moveTo(0, -plane.D / plane.B);
-      debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B);
-      debugCtx.stroke();
-    }
+  if (planeCoefficients.length < 3) {
+    console.error('Errore nel calcolo dei coefficienti del piano.');
+    return null;
   }
+
+  return {
+    A: planeCoefficients[0],
+    B: planeCoefficients[1],
+    C: 1,  // Normalizziamo C a 1 per un piano Ax + By + C = D
+    D: planeCoefficients[2]
+  };
+}
+
+
+ function drawDebug(points, plane) {
+  debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+  debugCtx.strokeStyle = 'red';
+  debugCtx.fillStyle = 'red';
+  debugCtx.lineWidth = 2;
+
+  // Disegna i punti
+  points.forEach(p => {
+    debugCtx.beginPath();
+    debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+    debugCtx.fill();
+  });
+
+  // Disegna il piano stimato, se esiste
+  if (plane) {
+    console.log('Disegno del piano con A:', plane.A, 'B:', plane.B, 'D:', plane.D);
+    
+    debugCtx.strokeStyle = 'blue';
+    debugCtx.beginPath();
+    debugCtx.moveTo(0, -plane.D / plane.B);
+    debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B);
+    debugCtx.stroke();
+  }
+}
+
 
   function estimateCameraPose(points) {
     if (points.length > 1000) {
