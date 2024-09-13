@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AR Astronave con SLAM</title>
   
-  <!-- A-Frame for rendering the scene -->
+  <!-- A-Frame per rendering -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   
   <!-- OpenCV.js library -->
@@ -35,7 +35,7 @@
     }
   </style>
 </head>
-<body style="margin: 0; overflow: hidden;">
+<body>
 
 <!-- A-Frame Scene -->
 <a-scene embedded 
@@ -47,26 +47,26 @@
       <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
   </a-assets>
 
-  <!-- Astronave Model at fixed position -->
+  <!-- Modello Astronave -->
   <a-entity id="astronave" position="0 0 -10" gltf-model="#astro" scale="1 1 1"></a-entity>
 
-  <!-- Camera for AR scene -->
+  <!-- Camera -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" class="clickable"></a-camera>
-
-  <!-- Visualizzazione del piano 3D -->
+  
+  <!-- Piano per riferimento -->
   <a-plane id="plane" position="0 0 0" rotation="-90 0 0" width="10" height="10" color="#CCC" opacity="0.5"></a-plane>
   
 </a-scene>
 
-<!-- Video Feed from Camera -->
+<!-- Video Camera Feed -->
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
 
 <script type="text/javascript">
  let cvLoaded = false;
-let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
+let isPlaneAnchored = false;
 
-// Coordinate fisse dell'astronave nel mondo 3D
+// Coordinate fisse astronave
 let anchorX = 0, anchorY = 0, anchorZ = -10;
 
 function onOpenCvReady() {
@@ -82,7 +82,7 @@ function onOpenCvError() {
 function initializeApp() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  const debugCanvas = document.createElement('canvas'); // Canvas per il debug
+  const debugCanvas = document.createElement('canvas'); // Canvas di debug
   const debugCtx = debugCanvas.getContext('2d');
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
@@ -91,14 +91,17 @@ function initializeApp() {
   debugCanvas.style.position = 'absolute';
   debugCanvas.style.top = '0';
   debugCanvas.style.left = '0';
-  debugCanvas.style.width = '100vw'; // A tutto schermo
-  debugCanvas.style.height = '100vh'; // A tutto schermo
-  debugCanvas.style.pointerEvents = 'none'; // Assicura che il canvas di debug non interferisca con gli altri eventi
+  debugCanvas.style.width = '100vw';
+  debugCanvas.style.height = '100vh';
+  debugCanvas.style.pointerEvents = 'none';
   document.body.appendChild(debugCanvas);
 
   let lastX = 0, lastY = 0, lastZ = 0;
   const smoothingFactor = 0.1;
   const depthScale = 1;
+  
+  let accumulatedPlanes = []; // Per mediare i risultati
+  const numFramesToAverage = 5;
 
   navigator.mediaDevices.getUserMedia({ 
     video: { facingMode: true }
@@ -128,7 +131,6 @@ function initializeApp() {
     const gray = new cv.Mat();
     const corners = new cv.Mat();
 
-    // Converti l'immagine in scala di grigi
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
     if (gray.empty()) {
@@ -139,10 +141,9 @@ function initializeApp() {
       return [];
     }
 
-    // Usa goodFeaturesToTrack per rilevare i punti
-    const maxCorners = 10000;  // Aumenta il numero massimo di punti
-    const qualityLevel = 0.001; // Mantieni la qualità bassa per rilevare più punti
-    const minDistance = 5;    // Riduci la distanza minima tra i punti
+    const maxCorners = 1000;
+    const qualityLevel = 0.01;
+    const minDistance = 5;
 
     cv.goodFeaturesToTrack(gray, corners, maxCorners, qualityLevel, minDistance);
     console.log(`Numero di punti rilevati: ${corners.rows}`);
@@ -158,22 +159,55 @@ function initializeApp() {
   }
 
   function filterPoints(points) {
-    // Aggiungi logica per filtrare punti che potrebbero essere rumore
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
   }
 
-  function estimate3DPlane(points2D) {
+  function estimate3DPlaneRANSAC(points2D) {
     const filteredPoints = filterPoints(points2D);
     if (filteredPoints.length < 3) {
       console.error('Non ci sono abbastanza punti validi per stimare un piano 3D.');
       return null;
     }
 
-    const points3D = filteredPoints.map(p => ({
-      x: (p.x / canvas.width) * 10 - 5,
-      y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-      z: depthScale
-    }));
+    let bestPlane = null;
+    let bestInliersCount = 0;
+    const iterations = 100;
+    const threshold = 0.01;
+
+    for (let i = 0; i < iterations; i++) {
+      const randomIndices = [];
+      while (randomIndices.length < 3) {
+        const rand = Math.floor(Math.random() * filteredPoints.length);
+        if (!randomIndices.includes(rand)) {
+          randomIndices.push(rand);
+        }
+      }
+
+      const sample = randomIndices.map(idx => filteredPoints[idx]);
+      const plane = estimate3DPlane(sample);
+
+      let inliersCount = 0;
+      filteredPoints.forEach(p => {
+        const distance = Math.abs(plane.A * p.x + plane.B * p.y + plane.C * p.z + plane.D);
+        if (distance < threshold) {
+          inliersCount++;
+        }
+      });
+
+      if (inliersCount > bestInliersCount) {
+        bestInliersCount = inliersCount;
+        bestPlane = plane;
+      }
+    }
+
+    console.log(`Miglior piano trovato con ${bestInliersCount} inliers.`);
+    return bestPlane;
+  }
+
+  function estimate3DPlane(points3D) {
+    if (points3D.length < 3) {
+      return null;
+    }
 
     let A = [];
     let b = [];
@@ -187,25 +221,9 @@ function initializeApp() {
     let matB = cv.matFromArray(b.length, 1, cv.CV_32F, b);
 
     let matX = new cv.Mat();
-    try {
-      cv.solve(matA, matB, matX, cv.DECOMP_SVD);
-    } catch (error) {
-      console.error('Errore nel calcolo dei coefficienti del piano:', error);
-      matA.delete();
-      matB.delete();
-      matX.delete();
-      return null;
-    }
+    cv.solve(matA, matB, matX, cv.DECOMP_SVD);
 
     let planeCoefficients = matX.data32F;
-
-    if (planeCoefficients.length < 4) {
-      console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
-      matA.delete();
-      matB.delete();
-      matX.delete();
-      return null;
-    }
 
     matA.delete();
     matB.delete();
@@ -217,29 +235,6 @@ function initializeApp() {
       C: planeCoefficients[2],
       D: planeCoefficients[3]
     };
-  }
-
-  function drawDebug(points, plane) {
-    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-    debugCtx.strokeStyle = 'red';
-    debugCtx.fillStyle = 'red';
-    debugCtx.lineWidth = 2;
-
-    // Disegna i punti
-    points.forEach(p => {
-      debugCtx.beginPath();
-      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-      debugCtx.fill();
-    });
-
-    // Disegna il piano stimato, se esiste
-    if (plane) {
-      debugCtx.strokeStyle = 'blue';
-      debugCtx.beginPath();
-      debugCtx.moveTo(0, -plane.D / plane.B);
-      debugCtx.lineTo(canvas.width, -(plane.D + plane.A * canvas.width) / plane.B);
-      debugCtx.stroke();
-    }
   }
 
   function estimateCameraPose(points) {
@@ -255,69 +250,51 @@ function initializeApp() {
       const smoothedY = lastY * (1 - smoothingFactor) + y3D * smoothingFactor;
       const smoothedZ = lastZ * (1 - smoothingFactor) + zEstimate * smoothingFactor;
 
-      camera.setAttribute('position', `${smoothedX * 10} ${Math.max(smoothedY * 10, 0)} ${smoothedZ}`);
-      console.log(`Posizione della camera aggiornata: X=${smoothedX * 10}, Y=${Math.max(smoothedY * 10, 0)}, Z=${smoothedZ}`);
-
+      camera.setAttribute('position', `${smoothedX * 0.5} ${smoothedY * 0.5} ${smoothedZ}`);
+      
       lastX = smoothedX;
       lastY = smoothedY;
       lastZ = smoothedZ;
-    } else {
-      console.log("Nessun punto rilevato.");
-    }
-  }
-
-  function anchorPlane(points, plane) {
-    if (plane) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const newX = (avgX / canvas.width) * 10 - 5;
-      const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const newZ = 9;  // Imposta Z fisso
-
-      // Ancoraggio del piano
-      document.addEventListener('click', function () {
-        if (!isPlaneAnchored) {
-          const planeElement = document.createElement('a-plane');
-          planeElement.setAttribute('position', `${newX} ${newY} ${newZ}`);
-          planeElement.setAttribute('width', '10');
-          planeElement.setAttribute('height', '10');
-          planeElement.setAttribute('color', '#00ff00');
-          document.querySelector('a-scene').appendChild(planeElement);
-          isPlaneAnchored = true;  // Assicurati che il piano sia ancorato solo una volta
-          console.log(`Piano ancorato a: X=${newX}, Y=${newY}, Z=${newZ}`);
-        }
-      });
     }
   }
 
   function processVideo() {
-    if (!cvLoaded) {
-      console.error('OpenCV.js non è stato caricato.');
-      return;
-    }
-
     const points = detectFeatures();
-    console.log('Punti rilevati:', points);
+    const plane = estimate3DPlaneRANSAC(points);
+    estimateCameraPose(points);
 
-    const planeCoefficients = estimate3DPlane(points);
-    if (planeCoefficients) {
-      anchorPlane(points, planeCoefficients); // Ancoraggio solo se il piano è stato calcolato
+    if (!isPlaneAnchored && plane) {
+      isPlaneAnchored = true;
+      const avgPlane = accumulateAndAveragePlanes(plane);
+      // Applica la media al piano (logica aggiuntiva da implementare qui)
     }
 
-    estimateCameraPose(points);
-    drawDebug(points, planeCoefficients);
     requestAnimationFrame(processVideo);
+  }
+
+  function accumulateAndAveragePlanes(newPlane) {
+    if (accumulatedPlanes.length >= numFramesToAverage) {
+      accumulatedPlanes.shift();
+    }
+    accumulatedPlanes.push(newPlane);
+
+    const avgPlane = accumulatedPlanes.reduce((acc, plane) => {
+      acc.A += plane.A;
+      acc.B += plane.B;
+      acc.C += plane.C;
+      acc.D += plane.D;
+      return acc;
+    }, { A: 0, B: 0, C: 0, D: 0 });
+
+    return {
+      A: avgPlane.A / accumulatedPlanes.length,
+      B: avgPlane.B / accumulatedPlanes.length,
+      C: avgPlane.C / accumulatedPlanes.length,
+      D: avgPlane.D / accumulatedPlanes.length
+    };
   }
 }
 
-if (window.cv && window.cv.getBuildInformation) {
-  onOpenCvReady();
-} else {
-  console.error('OpenCV.js non è caricato.');
-}
-
 </script>
-
 </body>
 </html>
