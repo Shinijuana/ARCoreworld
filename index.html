@@ -148,33 +148,35 @@ function initializeApp() {
 
   // Funzione per il rilevamento delle caratteristiche usando ORB
   function detectFeatures() {
-    const orb = new cv.ORB();
-    const keypoints = new cv.Mat();
-    const descriptors = new cv.Mat();
+  const orb = new cv.ORB();
+  const keypoints = new cv.KeyPointVector(); // Crea un oggetto KeyPointVector
+  const descriptors = new cv.Mat();
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const src = cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    const gray = new cv.Mat();
-    const blurred = new cv.Mat();
-    
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);  // Riduzione del rumore
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const src = cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  const gray = new cv.Mat();
+  const blurred = new cv.Mat();
+  
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);  // Riduzione del rumore
 
-    orb.detect(blurred, keypoints);
-
-    const points = [];
-    for (let i = 0; i < keypoints.rows; i++) {
-      const keypoint = keypoints.row(i).data32F;
-      points.push({ x: keypoint[0], y: keypoint[1] });
-    }
-
-    src.delete();
-    gray.delete();
-    blurred.delete();
-    keypoints.delete();
-    descriptors.delete();
-    return points;
+  orb.detect(blurred, keypoints); // Passa il KeyPointVector
+  
+  const points = [];
+  for (let i = 0; i < keypoints.size(); i++) { // Usa keypoints.size() per iterare
+    const keypoint = keypoints.get(i); // Ottieni il singolo KeyPoint
+    points.push({ x: keypoint.pt.x, y: keypoint.pt.y }); // Accedi alle coordinate del punto
   }
+
+  src.delete();
+  gray.delete();
+  blurred.delete();
+  keypoints.delete(); // Libera memoria di KeyPointVector
+  descriptors.delete();
+  
+  return points;
+}
+
 
   function filterPoints(points) {
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
