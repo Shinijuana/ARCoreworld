@@ -278,7 +278,7 @@ function initializeApp() {
 
       // Consider variability in depth
       const depth = 1 + (avgY / canvas.height);
-      const z3D = depth * depthScale;
+      const z3D = depth * depthScale * 10;
 
       const smoothedX = kalmanX.update(x3D);
       const smoothedY = kalmanY.update(y3D);
