@@ -44,9 +44,8 @@
     }
   </style>
 </head>
-<body style="margin: 0; overflow: hidden;">
+<body>
 
-<!-- A-Frame Scene -->
 <a-scene embedded 
          renderer="colorManagement: true, physicallyCorrectLights" 
          vr-mode-ui="enabled: false" 
@@ -56,30 +55,22 @@
       <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
   </a-assets>
 
-  <!-- Astronave Model at fixed position -->
   <a-entity id="astronave" position="0 0 -2" gltf-model="#astro" scale="1 1 1"></a-entity>
-
-  <!-- Camera for AR scene -->
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" class="clickable"></a-camera>
-
-  <!-- Visualizzazione del piano 3D -->
   <a-plane id="plane" position="0 0 0" rotation="-90 0 0" width="10" height="10" color="#CCC" opacity="0.5"></a-plane>
   
 </a-scene>
 
-<!-- Video Feed from Camera -->
 <video id="video" autoplay></video>
 <canvas id="canvas"></canvas>
 <canvas id="debugCanvas"></canvas>
 
 <script type="text/javascript">
 let cvLoaded = false;
-let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
+let isPlaneAnchored = false;
 
-// Coordinate fisse dell'astronave nel mondo 3D
 const anchorX = 0, anchorY = 0, anchorZ = -2;
 
-// Esempio base di filtro di Kalman
 class KalmanFilter {
   constructor(processNoise, measurementNoise, estimatedError) {
     this.processNoise = processNoise;
@@ -122,62 +113,6 @@ function initializeApp() {
 
   let lastX = 0, lastY = 0, lastZ = 0;
   const depthScale = 1;
-
-  const positionHistory = [];
-  const maxHistoryLength = 5;
-
-  navigator.mediaDevices.getUserMedia({ 
-    video: { facingMode: "environment" }
-  })let cvLoaded = false;
-let isPlaneAnchored = false; // Variabile per verificare se il piano è ancorato
-
-// Coordinate fisse dell'astronave nel mondo 3D
-const anchorX = 0, anchorY = 0, anchorZ = -2;
-
-// Esempio base di filtro di Kalman
-class KalmanFilter {
-  constructor(processNoise, measurementNoise, estimatedError) {
-    this.processNoise = processNoise;
-    this.measurementNoise = measurementNoise;
-    this.estimatedError = estimatedError;
-    this.posteriEstimate = 0;
-    this.posteriError = 1;
-  }
-
-  update(measurement) {
-    const prioriEstimate = this.posteriEstimate;
-    const prioriError = this.posteriError + this.processNoise;
-    const blendingFactor = prioriError / (prioriError + this.measurementNoise);
-    this.posteriEstimate = prioriEstimate + blendingFactor * (measurement - prioriEstimate);
-    this.posteriError = (1 - blendingFactor) * prioriError;
-    return this.posteriEstimate;
-  }
-}
-
-const kalmanX = new KalmanFilter(0.1, 1, 1);
-const kalmanY = new KalmanFilter(0.1, 1, 1);
-
-function onOpenCvReady() {
-  cvLoaded = true;
-  console.log('OpenCV.js is ready.');
-  initializeApp();
-}
-
-function onOpenCvError() {
-  console.error('OpenCV.js failed to load.');
-}
-
-function initializeApp() {
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const debugCanvas = document.getElementById('debugCanvas');
-  const debugCtx = debugCanvas.getContext('2d');
-  const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');
-
-  let lastX = 0, lastY = 0, lastZ = 0;
-  const depthScale = 1;
-
   const positionHistory = [];
   const maxHistoryLength = 5;
 
@@ -201,43 +136,40 @@ function initializeApp() {
     console.error('Errore nell\'accesso alla fotocamera: ', error);
   });
 
-  // Funzione per il rilevamento delle caratteristiche usando ORB
   function detectFeatures() {
-  const orb = new cv.ORB();
-  const keypoints = new cv.KeyPointVector(); // Crea un oggetto KeyPointVector
-  const descriptors = new cv.Mat();
+    const orb = new cv.ORB();
+    const keypoints = new cv.KeyPointVector();
+    const descriptors = new cv.Mat();
 
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const src = cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
-  const gray = new cv.Mat();
-  const blurred = new cv.Mat();
-  
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);  // Riduzione del rumore
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const src = cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    const gray = new cv.Mat();
+    const blurred = new cv.Mat();
+    
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
 
-  orb.detect(blurred, keypoints); // Passa il KeyPointVector
-  
-  const points = [];
-  for (let i = 0; i < keypoints.size(); i++) { // Usa keypoints.size() per iterare
-    const keypoint = keypoints.get(i); // Ottieni il singolo KeyPoint
-    points.push({ x: keypoint.pt.x, y: keypoint.pt.y }); // Accedi alle coordinate del punto
+    orb.detect(blurred, keypoints);
+    
+    const points = [];
+    for (let i = 0; i < keypoints.size(); i++) {
+      const keypoint = keypoints.get(i);
+      points.push({ x: keypoint.pt.x, y: keypoint.pt.y });
+    }
+
+    src.delete();
+    gray.delete();
+    blurred.delete();
+    keypoints.delete();
+    descriptors.delete();
+    
+    return points;
   }
-
-  src.delete();
-  gray.delete();
-  blurred.delete();
-  keypoints.delete(); // Libera memoria di KeyPointVector
-  descriptors.delete();
-  
-  return points;
-}
-
 
   function filterPoints(points) {
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
   }
 
-  // Funzione per stimare il piano usando RANSAC
   function estimate3DPlaneRANSAC(points2D) {
     const points3D = points2D.map(p => ({
       x: (p.x / canvas.width) * 10 - 5,
@@ -309,7 +241,6 @@ function initializeApp() {
     return { x: avgX, y: avgY, z: avgZ };
   }
 
-  // Funzione per stimare la posizione della camera
   function estimateCameraPose(points) {
     if (points.length > 100) {
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
@@ -356,7 +287,6 @@ function initializeApp() {
     }
   }
 
-  // Funzione principale per elaborare il video frame per frame
   function processVideo() {
     if (!cvLoaded) {
       return;
@@ -378,8 +308,6 @@ function initializeApp() {
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);
-
-
 </script>
 
 </body>
