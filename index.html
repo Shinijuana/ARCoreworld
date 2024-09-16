@@ -286,10 +286,13 @@ function initializeApp() {
       const smoothPos = smoothPosition(smoothedX, smoothedY, smoothedZ);
 
       if (isPlaneAnchored) {
-        camera.setAttribute('position', `${anchorPosition.x} ${Math.max(anchorPosition.y, 0)} ${anchorPosition.z}`);
+        // Usa la posizione ancorata per il piano
+        document.getElementById('plane').setAttribute('position', `${anchorPosition.x} ${Math.max(anchorPosition.y, 0)} ${anchorPosition.z}`);
+        document.getElementById('astronave').setAttribute('position', `${anchorPosition.x} ${Math.max(anchorPosition.y, 0)} ${anchorPosition.z}`);
       } else {
         camera.setAttribute('position', `${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z}`);
       }
+
       console.log(`Posizione della camera aggiornata: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z}`);
 
       lastX = smoothPos.x;
@@ -311,13 +314,10 @@ function initializeApp() {
 
       anchorPosition = { x: newX, y: newY, z: newZ };
 
-      const smoothedX = kalmanX.update(newX);
-      const smoothedY = kalmanY.update(newY);
+      document.getElementById('plane').setAttribute('position', `${anchorPosition.x} ${Math.max(anchorPosition.y, 0)} ${anchorPosition.z}`);
+      document.getElementById('astronave').setAttribute('position', `${anchorPosition.x} ${Math.max(anchorPosition.y, 0)} ${anchorPosition.z}`);
 
-      const smoothPos = smoothPosition(smoothedX, smoothedY, newZ);
-
-      camera.setAttribute('position', `${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z}`);
-      console.log(`Piano ancorato: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z}`);
+      console.log(`Piano ancorato: X=${anchorPosition.x}, Y=${Math.max(anchorPosition.y, 0)}, Z=${anchorPosition.z}`);
       
       isPlaneAnchored = true;
     }
