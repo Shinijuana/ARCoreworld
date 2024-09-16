@@ -92,7 +92,8 @@ class KalmanFilter {
 
 const kalmanX = new KalmanFilter(0.1, 1, 1);
 const kalmanY = new KalmanFilter(0.1, 1, 1);
-
+const kalmanZ = new KalmanFilter(0.1, 1, 1); // Aggiungi un filtro Kalman per Z
+  
 function onOpenCvReady() {
   cvLoaded = true;
   console.log('OpenCV.js is ready.');
@@ -167,53 +168,80 @@ function initializeApp() {
   }
 
   function filterPoints(points) {
-    return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
+    const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+    const threshold = 50; // Soglia per scartare outlier
+    return points.filter(p => {
+      const distance = Math.sqrt(Math.pow(p.x - meanX, 2) + Math.pow(p.y - meanY, 2));
+      return distance < threshold;
+    });
   }
 
-  function estimate3DPlaneRANSAC(points2D) {
-    const points3D = points2D.map(p => ({
+ function estimate3DPlane(points2D) {
+  if (points2D.length < 4) {
+    console.error('Non ci sono abbastanza punti per stimare un piano.');
+    return null;
+  }
+
+  // Trasforma i punti 2D in 3D con una profondità variabile
+  const points3D = points2D.map(p => {
+    const depth = 1 + (p.y / canvas.height); // Varia la profondità in base all'asse Y
+    console.log(Point 2D: (${p.x}, ${p.y}), Depth: ${depth});
+    return {
       x: (p.x / canvas.width) * 10 - 5,
       y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-      z: depthScale
-    }));
+      z: depth * depthScale // Profondità variabile
+    };
+  });
 
-    if (points3D.length < 4) {
-      console.error('Non ci sono abbastanza punti per stimare un piano.');
-      return null;
-    }
+  // Prepara i dati per la stima del piano
+  const A = [];
+  const B = [];
+  points3D.forEach(p => {
+    A.push([p.x, p.y, 1]);
+    B.push(-p.z);
+  });
 
-    const maxIterations = 1000;
-    const threshold = 0.01;
-    let bestPlane = null;
-    let bestInliers = 0;
+  // Stampa i dati per il debug
+  console.log('Matrix A:', A);
+  console.log('Matrix B:', B);
 
-    for (let i = 0; i < maxIterations; i++) {
-      const samplePoints = [];
-      while (samplePoints.length < 3) {
-        const index = Math.floor(Math.random() * points3D.length);
-        if (!samplePoints.includes(points3D[index])) {
-          samplePoints.push(points3D[index]);
-        }
-      }
+  const matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
+  const matB = cv.matFromArray(B.length, 1, cv.CV_32F, B);
+  const matX = new cv.Mat();
 
-      const plane = computePlaneFromPoints(samplePoints);
-
-      let inliersCount = 0;
-      points3D.forEach(p => {
-        const distance = Math.abs(plane.A * p.x + plane.B * p.y + plane.C * p.z + plane.D);
-        if (distance < threshold) {
-          inliersCount++;
-        }
-      });
-
-      if (inliersCount > bestInliers) {
-        bestInliers = inliersCount;
-        bestPlane = plane;
-      }
-    }
-
-    return bestPlane;
+  try {
+    // Usa un altro metodo di decomposizione se RANSAC non funziona
+    cv.solve(matA, matB, matX, cv.DECOMP_SVD);
+  } catch (error) {
+    console.error('Errore nel calcolo dei coefficienti del piano:', error);
+    matA.delete();
+    matB.delete();
+    matX.delete();
+    return null;
   }
+
+  const planeCoefficients = matX.data32F;
+  matA.delete();
+  matB.delete();
+  matX.delete();
+
+  if (planeCoefficients.length < 3) {
+    console.error('Errore nel calcolo dei coefficienti del piano. Assicurati di avere abbastanza punti.');
+    return null;
+  }
+
+  console.log('Plane Coefficients:', planeCoefficients);
+
+  return {
+    A: planeCoefficients[0],
+    B: planeCoefficients[1],
+    C: 1,
+    D: planeCoefficients[2]
+  };
+}
+
 
   function computePlaneFromPoints(points) {
     const p1 = points[0], p2 = points[1], p3 = points[2];
@@ -242,29 +270,34 @@ function initializeApp() {
   }
 
   function estimateCameraPose(points) {
-    if (points.length > 100) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  if (points.length > 100) {
+    const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
+    const x3D = (avgX / canvas.width) * 10 - 5;
+    const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
 
-      const smoothedX = kalmanX.update(x3D);
-      const smoothedY = kalmanY.update(y3D);
-      const smoothedZ = 0;
+    // Considera una variabilità nella profondità
+    const depth = 1 + (avgY / canvas.height);
+    const z3D = depth * depthScale;
 
-      const smoothPos = smoothPosition(smoothedX, smoothedY, smoothedZ);
+    const smoothedX = kalmanX.update(x3D);
+    const smoothedY = kalmanY.update(y3D);
+    const smoothedZ = kalmanZ ? kalmanZ.update(z3D) : z3D; // Aggiungi un filtro Kalman per Z se necessario
 
-      camera.setAttribute('position', `${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z}`);
-      console.log(`Posizione della camera aggiornata: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z}`);
+    const smoothPos = smoothPosition(smoothedX, smoothedY, smoothedZ);
 
-      lastX = smoothPos.x;
-      lastY = smoothPos.y;
-      lastZ = smoothPos.z;
-    } else {
-      console.log("Nessun punto rilevato.");
-    }
+    camera.setAttribute('position', ${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z});
+    console.log(Posizione della camera aggiornata: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z});
+
+    lastX = smoothPos.x;
+    lastY = smoothPos.y;
+    lastZ = smoothPos.z;
+  } else {
+    console.log("Nessun punto rilevato.");
   }
+}
+
 
   function anchorPlane(points, plane) {
     if (plane && !isPlaneAnchored) {
@@ -280,8 +313,8 @@ function initializeApp() {
 
       const smoothPos = smoothPosition(smoothedX, smoothedY, newZ);
 
-      camera.setAttribute('position', `${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z}`);
-      console.log(`Piano ancorato: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z}`);
+      camera.setAttribute('position', ${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z});
+      console.log(Piano ancorato: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z});
       
       isPlaneAnchored = true;
     }
@@ -295,8 +328,8 @@ function initializeApp() {
     const points = detectFeatures();
     const filteredPoints = filterPoints(points);
     
-    const plane = estimate3DPlaneRANSAC(filteredPoints);
-    
+    const plane = estimate3DPlane(filteredPoints);
+
     if (!isPlaneAnchored) {
       anchorPlane(filteredPoints, plane);
     }
