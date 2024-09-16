@@ -273,12 +273,12 @@ function initializeApp() {
       const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
+      const x3D = (avgX / canvas.width) * 100 - 5;
+      const y3D = Math.max((avgY / canvas.height) * 100 - 5, 0);
 
       // Consider variability in depth
       const depth = 1 + (avgY / canvas.height);
-      const z3D = depth * depthScale;
+      const z3D = depth * depthScale * 10;
 
       const smoothedX = kalmanX.update(x3D);
       const smoothedY = kalmanY.update(y3D);
