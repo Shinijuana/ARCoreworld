@@ -30,7 +30,7 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 1;
+      z-index: 2; /* Ensure it's above the debug canvas */
       overflow: hidden;
     }
     #debugCanvas {
@@ -39,7 +39,7 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 2;
+      z-index: 1; /* Between video and A-Frame scene */
       pointer-events: none;
     }
   </style>
@@ -187,7 +187,6 @@ function initializeApp() {
     // Convert 2D points to 3D with variable depth
     const points3D = points2D.map(p => {
       const depth = 1 + (p.y / canvas.height); // Vary depth based on Y axis
-      console.log(`Point 2D: (${p.x}, ${p.y}), Depth: ${depth}`);
       return {
         x: (p.x / canvas.width) * 10 - 5,
         y: Math.max((p.y / canvas.height) * 10 - 5, 0),
@@ -195,126 +194,31 @@ function initializeApp() {
       };
     });
 
-    // Prepare data for plane estimation
-    const A = [];
-    const B = [];
-    points3D.forEach(p => {
-      A.push([p.x, p.y, 1]);
-      B.push(-p.z);
+    return points3D;
+  }
+
+  function drawDebug(points, plane) {
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+
+    // Draw points
+    points.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
+      debugCtx.fillStyle = "red";
+      debugCtx.fill();
     });
 
-    // Print data for debugging
-    console.log('Matrix A:', A);
-    console.log('Matrix B:', B);
-
-    const matA = cv.matFromArray(A.length, A[0].length, cv.CV_32F, A.flat());
-    const matB = cv.matFromArray(B.length, 1, cv.CV_32F, B);
-    const matX = new cv.Mat();
-
-    try {
-      // Use an alternative decomposition method if RANSAC fails
-      cv.solve(matA, matB, matX, cv.DECOMP_SVD);
-    } catch (error) {
-      console.error('Error calculating plane coefficients:', error);
-      matA.delete();
-      matB.delete();
-      matX.delete();
-      return null;
-    }
-
-    const planeCoefficients = matX.data32F;
-    matA.delete();
-    matB.delete();
-    matX.delete();
-
-    if (planeCoefficients.length < 3) {
-      console.error('Error calculating plane coefficients. Ensure sufficient points.');
-      return null;
-    }
-
-    console.log('Plane Coefficients:', planeCoefficients);
-
-    return {
-      A: planeCoefficients[0],
-      B: planeCoefficients[1],
-      C: 1,
-      D: planeCoefficients[2]
-    };
-  }
-
-  function computePlaneFromPoints(points) {
-    const p1 = points[0], p2 = points[1], p3 = points[2];
-    const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
-    const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
-
-    const A = v1.y * v2.z - v1.z * v2.y;
-    const B = v1.z * v2.x - v1.x * v2.z;
-    const C = v1.x * v2.y - v1.y * v2.x;
-    const D = -(A * p1.x + B * p1.y + C * p1.z);
-
-    return { A, B, C, D };
-  }
-
-  function smoothPosition(x, y, z) {
-    if (positionHistory.length >= maxHistoryLength) {
-      positionHistory.shift();
-    }
-    positionHistory.push({ x, y, z });
-
-    const avgX = positionHistory.reduce((sum, p) => sum + p.x, 0) / positionHistory.length;
-    const avgY = positionHistory.reduce((sum, p) => sum + p.y, 0) / positionHistory.length;
-    const avgZ = positionHistory.reduce((sum, p) => sum + p.z, 0) / positionHistory.length;
-
-    return { x: avgX, y: avgY, z: avgZ };
-  }
-
-  function estimateCameraPose(points) {
-    if (points.length > 100) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const x3D = (avgX / canvas.width) * 10 - 5;
-      const y3D = Math.max((avgY / canvas.height) * 10 - 5, 0);
-
-      // Consider variability in depth
-      const depth = 1 + (avgY / canvas.height);
-      const z3D = depth * depthScale * 2;
-
-      const smoothedX = kalmanX.update(x3D);
-      const smoothedY = kalmanY.update(y3D);
-      const smoothedZ = kalmanZ.update(z3D); // Use Kalman filter for Z
-
-      const smoothPos = smoothPosition(smoothedX, smoothedY, smoothedZ);
-
-      camera.setAttribute('position', `${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z}`);
-      console.log(`Camera position updated: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z}`);
-
-      lastX = smoothPos.x;
-      lastY = smoothPos.y;
-      lastZ = smoothPos.z;
-    } else {
-      console.log("No points detected.");
-    }
-  }
-
-  function anchorPlane(points, plane) {
-    if (plane && !isPlaneAnchored) {
-      const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-
-      const newX = (avgX / canvas.width) * 10 - 5;
-      const newY = Math.max((avgY / canvas.height) * 10 - 5, 0);
-      const newZ = 9;
-
-      const smoothedX = kalmanX.update(newX);
-      const smoothedY = kalmanY.update(newY);
-
-      const smoothPos = smoothPosition(smoothedX, smoothedY, newZ);
-
-      camera.setAttribute('position', `${smoothPos.x} ${Math.max(smoothPos.y, 0)} ${smoothPos.z}`);
-      console.log(`Plane anchored: X=${smoothPos.x}, Y=${Math.max(smoothPos.y, 0)}, Z=${smoothPos.z}`);
-      
-      isPlaneAnchored = true;
+    // Draw plane (as a rectangle for now, based on the first 2 points)
+    if (points.length >= 4) {
+      debugCtx.beginPath();
+      debugCtx.moveTo(points[0].x, points[0].y);
+      debugCtx.lineTo(points[1].x, points[1].y);
+      debugCtx.lineTo(points[2].x, points[2].y);
+      debugCtx.lineTo(points[3].x, points[3].y);
+      debugCtx.closePath();
+      debugCtx.strokeStyle = "blue";
+      debugCtx.lineWidth = 2;
+      debugCtx.stroke();
     }
   }
 
@@ -325,23 +229,22 @@ function initializeApp() {
 
     const points = detectFeatures();
     const filteredPoints = filterPoints(points);
-    
     const plane = estimate3DPlane(filteredPoints);
+    drawDebug(filteredPoints, plane);
 
-    if (!isPlaneAnchored) {
-      anchorPlane(filteredPoints, plane);
+    if (plane && plane.length >= 4) {
+      const meanZ = plane.reduce((sum, p) => sum + p.z, 0) / plane.length;
+
+      const smoothedX = kalmanX.update(plane[0].x);
+      const smoothedY = kalmanY.update(plane[0].y);
+      const smoothedZ = kalmanZ.update(meanZ); 
+
+      camera.object3D.position.set(smoothedX, smoothedY, smoothedZ);
     }
-
-    estimateCameraPose(filteredPoints);
 
     requestAnimationFrame(processVideo);
   }
 }
-
-document.addEventListener('DOMContentLoaded', initializeApp);
 </script>
-
-
-
 </body>
 </html>
