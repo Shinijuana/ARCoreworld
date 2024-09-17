@@ -57,53 +57,6 @@ const kalmanX = new KalmanFilter(0.1, 1, 1);
 const kalmanY = new KalmanFilter(0.1, 1, 1);
 const kalmanZ = new KalmanFilter(0.1, 1, 1);
 
-function onOpenCvReady() {
-  cvLoaded = true;
-  console.log('OpenCV.js is ready.');
-  initializeApp();
-}
-
-function onOpenCvError() {
-  console.error('OpenCV.js failed to load.');
-}
-
-function initializeApp() {
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const debugCanvas = document.getElementById('debugCanvas');
-  const debugCtx = debugCanvas.getContext('2d');
-  const ctx = canvas.getContext('2d');
-  const camera = document.getElementById('ar-camera');
-
-  const depthScale = 1;<script type="text/javascript">
-let cvLoaded = false;
-let isPlaneAnchored = false;
-let detectedPlane = null; // To store the detected stable plane
-const anchorX = 0, anchorY = 0, anchorZ = -2;
-
-class KalmanFilter {
-  constructor(processNoise, measurementNoise, estimatedError) {
-    this.processNoise = processNoise;
-    this.measurementNoise = measurementNoise;
-    this.estimatedError = estimatedError;
-    this.posteriEstimate = 0;
-    this.posteriError = 1;
-  }
-
-  update(measurement) {
-    const prioriEstimate = this.posteriEstimate;
-    const prioriError = this.posteriError + this.processNoise;
-    const blendingFactor = prioriError / (prioriError + this.measurementNoise);
-    this.posteriEstimate = prioriEstimate + blendingFactor * (measurement - prioriEstimate);
-    this.posteriError = (1 - blendingFactor) * prioriError;
-    return this.posteriEstimate;
-  }
-}
-
-const kalmanX = new KalmanFilter(0.1, 1, 1);
-const kalmanY = new KalmanFilter(0.1, 1, 1);
-const kalmanZ = new KalmanFilter(0.1, 1, 1);
-
 let allPlanes = []; // To store all detected planes
 
 function onOpenCvReady() {
@@ -316,6 +269,7 @@ function initializeApp() {
   }
 }
 </script>
+
 
 </body>
 </html>
