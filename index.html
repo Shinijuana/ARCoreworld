@@ -55,7 +55,7 @@ class KalmanFilter {
 
 const kalmanX = new KalmanFilter(0.1, 1, 1);
 const kalmanY = new KalmanFilter(0.1, 1, 1);
-const kalmanZ = new KalmanFilter(0.1, 1, 1); 
+const kalmanZ = new KalmanFilter(0.1, 1, 1);
 
 function onOpenCvReady() {
   cvLoaded = true;
@@ -139,72 +139,71 @@ function initializeApp() {
   }
 
   function estimate3DPlane(points2D) {
-  if (points2D.length < 4) {
-    console.error('Non ci sono abbastanza punti per stimare un piano.');
-    return null;
-  }
+    if (points2D.length < 4) {
+      console.error('Non ci sono abbastanza punti per stimare un piano.');
+      return null;
+    }
 
-  // Calcolo dei punti 3D
-  const points3D = points2D.map(p => {
-    const depth = 1 + (p.y / canvas.height); // Stima della profondità
-    return {
-      x: (p.x / canvas.width) * 10 - 5, // Scala per avere coordinate 3D
-      y: Math.max((p.y / canvas.height) * 10 - 5, 0), // Evitare valori negativi per Y
-      z: depth * depthScale
+    // Calcolo dei punti 3D
+    const points3D = points2D.map(p => {
+      const depth = 1 + (p.y / canvas.height); // Stima della profondità
+      return {
+        x: (p.x / canvas.width) * 10 - 5, // Scala per avere coordinate 3D
+        y: Math.max((p.y / canvas.height) * 10 - 5, 0), // Evitare valori negativi per Y
+        z: depth * depthScale
+      };
+    });
+
+    // Calcolo del centroide
+    const centroid = points3D.reduce((sum, p) => ({
+      x: sum.x + p.x / points3D.length,
+      y: sum.y + p.y / points3D.length,
+      z: sum.z + p.z / points3D.length
+    }), { x: 0, y: 0, z: 0 });
+
+    // Verifica se i punti sono su un piano (calcolo del fit di un piano)
+    let sumNormalX = 0, sumNormalY = 0, sumNormalZ = 0;
+    for (let i = 0; i < points3D.length - 1; i++) {
+      const p1 = points3D[i];
+      const p2 = points3D[i + 1];
+
+      const normalX = (p1.y - centroid.y) * (p2.z - centroid.z) - (p1.z - centroid.z) * (p2.y - centroid.y);
+      const normalY = (p1.z - centroid.z) * (p2.x - centroid.x) - (p1.x - centroid.x) * (p2.z - centroid.z);
+      const normalZ = (p1.x - centroid.x) * (p2.y - centroid.y) - (p1.y - centroid.y) * (p2.x - centroid.x);
+
+      sumNormalX += normalX;
+      sumNormalY += normalY;
+      sumNormalZ += normalZ;
+    }
+
+    // Media delle normali
+    const avgNormalX = sumNormalX / points3D.length;
+    const avgNormalY = sumNormalY / points3D.length;
+    const avgNormalZ = sumNormalZ / points3D.length;
+
+    // Normalizzazione della normale
+    const normalMagnitude = Math.sqrt(avgNormalX * avgNormalX + avgNormalY * avgNormalY + avgNormalZ * avgNormalZ);
+    const normalizedNormal = {
+      x: avgNormalX / normalMagnitude,
+      y: avgNormalY / normalMagnitude,
+      z: avgNormalZ / normalMagnitude
     };
-  });
 
-  // Calcolo del centroide
-  const centroid = points3D.reduce((sum, p) => ({
-    x: sum.x + p.x / points3D.length,
-    y: sum.y + p.y / points3D.length,
-    z: sum.z + p.z / points3D.length
-  }), { x: 0, y: 0, z: 0 });
+    // Verifica che la normale sia orientata in modo da essere parallela al pavimento (asse Y)
+    const tolerance = 0.2; // Tolleranza per la deviazione dall'asse Y
+    const isParallelToFloor = Math.abs(normalizedNormal.y) > (1 - tolerance);
 
-  // Verifica se i punti sono su un piano (calcolo del fit di un piano)
-  let sumNormalX = 0, sumNormalY = 0, sumNormalZ = 0;
-  for (let i = 0; i < points3D.length - 1; i++) {
-    const p1 = points3D[i];
-    const p2 = points3D[i + 1];
+    // Verifica l'estensione del piano (dimensioni sufficienti)
+    const planeExtent = Math.abs(points3D[0].x - points3D[1].x) > 2 && Math.abs(points3D[0].y - points3D[2].y) > 2;
 
-    const normalX = (p1.y - centroid.y) * (p2.z - centroid.z) - (p1.z - centroid.z) * (p2.y - centroid.y);
-    const normalY = (p1.z - centroid.z) * (p2.x - centroid.x) - (p1.x - centroid.x) * (p2.z - centroid.z);
-    const normalZ = (p1.x - centroid.x) * (p2.y - centroid.y) - (p1.y - centroid.y) * (p2.x - centroid.x);
-
-    sumNormalX += normalX;
-    sumNormalY += normalY;
-    sumNormalZ += normalZ;
+    // Se il piano è parallelo al pavimento e ha una buona estensione, consideralo valido
+    if (isParallelToFloor && planeExtent) {
+      return points3D;
+    } else {
+      console.log('Superficie scartata: non è parallela al pavimento o troppo piccola.');
+      return null;
+    }
   }
-
-  // Media delle normali
-  const avgNormalX = sumNormalX / points3D.length;
-  const avgNormalY = sumNormalY / points3D.length;
-  const avgNormalZ = sumNormalZ / points3D.length;
-
-  // Normalizzazione della normale
-  const normalMagnitude = Math.sqrt(avgNormalX * avgNormalX + avgNormalY * avgNormalY + avgNormalZ * avgNormalZ);
-  const normalizedNormal = {
-    x: avgNormalX / normalMagnitude,
-    y: avgNormalY / normalMagnitude,
-    z: avgNormalZ / normalMagnitude
-  };
-
-  // Verifica che la normale sia orientata in modo da essere parallela al pavimento (asse Y)
-  const tolerance = 0.2; // Tolleranza per la deviazione dall'asse Y
-  const isParallelToFloor = Math.abs(normalizedNormal.y) > (1 - tolerance);
-
-  // Verifica l'estensione del piano (dimensioni sufficienti)
-  const planeExtent = Math.abs(points3D[0].x - points3D[1].x) > 2 && Math.abs(points3D[0].y - points3D[2].y) > 2;
-
-  // Se il piano è parallelo al pavimento e ha una buona estensione, consideralo valido
-  if (isParallelToFloor && planeExtent) {
-    return points3D;
-  } else {
-    console.log('Superficie scartata: non è parallela al pavimento o troppo piccola.');
-    return null;
-  }
-}
-
 
   function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
@@ -243,23 +242,15 @@ function initializeApp() {
       const meanZ = plane.reduce((sum, p) => sum + p.z, 0) / plane.length;
       const smoothedX = kalmanX.update(plane[0].x);
       const smoothedY = kalmanY.update(plane[0].y);
-      const smoothedZ = kalmanZ.update(meanZ); 
+      const smoothedZ = kalmanZ.update(meanZ);
 
-      camera.object3D.position.set(smoothedX, smoothedY, smoothedZ);
-
-      // Criteria to determine a stable plane
-      const planeExtent = Math.abs(plane[0].x - plane[1].x) > 2 && Math.abs(plane[0].y - plane[2].y) > 2;
-      const planeAngle = Math.abs(plane[0].y - plane[1].y) < 1;
-
-      if (planeExtent && planeAngle) {
-        detectedPlane = plane;
-        console.log('Piano rilevato e salvato:', detectedPlane);
-      }
+      camera.setAttribute('position', `${smoothedX} ${smoothedY} ${smoothedZ}`);
     }
 
     requestAnimationFrame(processVideo);
   }
 }
 </script>
+
 </body>
 </html>
