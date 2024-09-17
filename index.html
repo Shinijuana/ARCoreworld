@@ -180,22 +180,59 @@ function initializeApp() {
 
   function estimate3DPlane(points2D) {
     if (points2D.length < 4) {
-      console.error('Not enough points to estimate a plane.');
-      return null;
+        console.error('Not enough points to estimate a plane.');
+        return null;
     }
 
     // Convert 2D points to 3D with variable depth
     const points3D = points2D.map(p => {
-      const depth = 1 + (p.y / canvas.height); // Vary depth based on Y axis
-      return {
-        x: (p.x / canvas.width) * 10 - 5,
-        y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-        z: depth * depthScale // Variable depth
-      };
+        const depth = 1 + (p.y / canvas.height); // Vary depth based on Y axis
+        return {
+            x: (p.x / canvas.width) * 10 - 5,
+            y: Math.max((p.y / canvas.height) * 10 - 5, 0),
+            z: depth * depthScale // Variable depth
+        };
     });
 
-    return points3D;
-  }
+    // Calculate the normal of the plane using the cross product of vectors
+    const p1 = points3D[0], p2 = points3D[1], p3 = points3D[2];
+
+    const v1 = {
+        x: p2.x - p1.x,
+        y: p2.y - p1.y,
+        z: p2.z - p1.z
+    };
+
+    const v2 = {
+        x: p3.x - p1.x,
+        y: p3.y - p1.y,
+        z: p3.z - p1.z
+    };
+
+    // Cross product v1 × v2 gives us the normal to the plane
+    const normal = {
+        x: v1.y * v2.z - v1.z * v2.y,
+        y: v1.z * v2.x - v1.x * v2.z,
+        z: v1.x * v2.y - v1.y * v2.x
+    };
+
+    // Normalize the normal vector
+    const magnitude = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+    normal.x /= magnitude;
+    normal.y /= magnitude;
+    normal.z /= magnitude;
+
+    // We want planes that are mostly horizontal, meaning the normal is mostly pointing along the Y axis
+    const verticalThreshold = 0.9; // Adjust this threshold based on the tolerance you want
+
+    if (Math.abs(normal.y) > verticalThreshold) {
+        return points3D; // The plane is horizontal or near-horizontal
+    } else {
+        console.log('Plane discarded, normal not aligned with Y-axis.');
+        return null; // Discard planes that are too vertical
+    }
+}
+
 
   function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
