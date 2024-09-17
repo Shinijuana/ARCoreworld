@@ -5,60 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AR Astronave con SLAM</title>
   
-  <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  
-  <!-- OpenCV.js library -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()" onerror="onOpenCvError()"></script>
 
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-    #video, #canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 0;
-    }
-    a-scene {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 2; /* Ensure it's above the debug canvas */
-      overflow: hidden;
-    }
-    #debugCanvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1; /* Between video and A-Frame scene */
-      pointer-events: none;
-    }
+    body { margin: 0; overflow: hidden; }
+    #video, #canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; }
+    a-scene { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; overflow: hidden; }
+    #debugCanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
   </style>
 </head>
 <body>
 
-<a-scene embedded 
-         renderer="colorManagement: true, physicallyCorrectLights" 
-         vr-mode-ui="enabled: false" 
-         device-orientation-permission-ui="enabled: false">
-    
-  <a-assets>
-      <a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item>
-  </a-assets>
-
+<a-scene embedded renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+  <a-assets><a-asset-item id="astro" src="ASTRONAVE.glb"></a-asset-item></a-assets>
   <a-entity id="astronave" position="0 0 -2" gltf-model="#astro" scale="1 1 1"></a-entity>
   <a-camera id="ar-camera" position="0 0 0" look-controls="enabled: false" class="clickable"></a-camera>
   <a-plane id="plane" position="0 0 0" rotation="-90 0 0" width="10" height="10" color="#CCC" opacity="0.5"></a-plane>
-  
 </a-scene>
 
 <video id="video" autoplay></video>
@@ -68,7 +31,7 @@
 <script type="text/javascript">
 let cvLoaded = false;
 let isPlaneAnchored = false;
-
+let detectedPlane = null; // To store the detected stable plane
 const anchorX = 0, anchorY = 0, anchorZ = -2;
 
 class KalmanFilter {
@@ -92,7 +55,7 @@ class KalmanFilter {
 
 const kalmanX = new KalmanFilter(0.1, 1, 1);
 const kalmanY = new KalmanFilter(0.1, 1, 1);
-const kalmanZ = new KalmanFilter(0.1, 1, 1); // Add Kalman filter for Z
+const kalmanZ = new KalmanFilter(0.1, 1, 1); 
 
 function onOpenCvReady() {
   cvLoaded = true;
@@ -112,10 +75,7 @@ function initializeApp() {
   const ctx = canvas.getContext('2d');
   const camera = document.getElementById('ar-camera');
 
-  let lastX = 0, lastY = 0, lastZ = 0;
   const depthScale = 1;
-  const positionHistory = [];
-  const maxHistoryLength = 5;
 
   navigator.mediaDevices.getUserMedia({ 
     video: { facingMode: "environment" }
@@ -171,7 +131,7 @@ function initializeApp() {
     const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
     const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-    const threshold = 50; // Threshold for outlier removal
+    const threshold = 50;
     return points.filter(p => {
       const distance = Math.sqrt(Math.pow(p.x - meanX, 2) + Math.pow(p.y - meanY, 2));
       return distance < threshold;
@@ -184,13 +144,12 @@ function initializeApp() {
       return null;
     }
 
-    // Convert 2D points to 3D with variable depth
     const points3D = points2D.map(p => {
-      const depth = 1 + (p.y / canvas.height); // Vary depth based on Y axis
+      const depth = 1 + (p.y / canvas.height);
       return {
         x: (p.x / canvas.width) * 10 - 5,
         y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-        z: depth * depthScale // Variable depth
+        z: depth * depthScale
       };
     });
 
@@ -200,7 +159,6 @@ function initializeApp() {
   function drawDebug(points, plane) {
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
 
-    // Draw points
     points.forEach(p => {
       debugCtx.beginPath();
       debugCtx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
@@ -208,7 +166,6 @@ function initializeApp() {
       debugCtx.fill();
     });
 
-    // Draw plane (as a rectangle for now, based on the first 2 points)
     if (points.length >= 4) {
       debugCtx.beginPath();
       debugCtx.moveTo(points[0].x, points[0].y);
@@ -223,7 +180,7 @@ function initializeApp() {
   }
 
   function processVideo() {
-    if (!cvLoaded) {
+    if (!cvLoaded || detectedPlane) {
       return;
     }
 
@@ -234,12 +191,20 @@ function initializeApp() {
 
     if (plane && plane.length >= 4) {
       const meanZ = plane.reduce((sum, p) => sum + p.z, 0) / plane.length;
-
       const smoothedX = kalmanX.update(plane[0].x);
       const smoothedY = kalmanY.update(plane[0].y);
       const smoothedZ = kalmanZ.update(meanZ); 
 
       camera.object3D.position.set(smoothedX, smoothedY, smoothedZ);
+
+      // Criteria to determine a stable plane
+      const planeExtent = Math.abs(plane[0].x - plane[1].x) > 2 && Math.abs(plane[0].y - plane[2].y) > 2;
+      const planeAngle = Math.abs(plane[0].y - plane[1].y) < 1;
+
+      if (planeExtent && planeAngle) {
+        detectedPlane = plane;
+        console.log('Piano rilevato e salvato:', detectedPlane);
+      }
     }
 
     requestAnimationFrame(processVideo);
