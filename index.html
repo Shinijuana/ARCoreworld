@@ -55,9 +55,7 @@ class KalmanFilter {
 
 const kalmanX = new KalmanFilter(0.1, 1, 1);
 const kalmanY = new KalmanFilter(0.1, 1, 1);
-const kalmanZ = new KalmanFilter(0.1, 1, 1);
-
-let allPlanes = []; // To store all detected planes
+const kalmanZ = new KalmanFilter(0.1, 1, 1); 
 
 function onOpenCvReady() {
   cvLoaded = true;
@@ -146,6 +144,7 @@ function initializeApp() {
       return null;
     }
 
+    // Calcolo dei punti 3D
     const points3D = points2D.map(p => {
       const depth = 1 + (p.y / canvas.height); // Stima della profondità
       return {
@@ -155,12 +154,14 @@ function initializeApp() {
       };
     });
 
+    // Calcolo del centroide
     const centroid = points3D.reduce((sum, p) => ({
       x: sum.x + p.x / points3D.length,
       y: sum.y + p.y / points3D.length,
       z: sum.z + p.z / points3D.length
     }), { x: 0, y: 0, z: 0 });
 
+    // Verifica se i punti sono su un piano (calcolo del fit di un piano)
     let sumNormalX = 0, sumNormalY = 0, sumNormalZ = 0;
     for (let i = 0; i < points3D.length - 1; i++) {
       const p1 = points3D[i];
@@ -175,10 +176,12 @@ function initializeApp() {
       sumNormalZ += normalZ;
     }
 
+    // Media delle normali
     const avgNormalX = sumNormalX / points3D.length;
     const avgNormalY = sumNormalY / points3D.length;
     const avgNormalZ = sumNormalZ / points3D.length;
 
+    // Normalizzazione della normale
     const normalMagnitude = Math.sqrt(avgNormalX * avgNormalX + avgNormalY * avgNormalY + avgNormalZ * avgNormalZ);
     const normalizedNormal = {
       x: avgNormalX / normalMagnitude,
@@ -186,47 +189,40 @@ function initializeApp() {
       z: avgNormalZ / normalMagnitude
     };
 
-    const tolerance = 0.2;
+    // Verifica che la normale sia orientata in modo da essere parallela al pavimento (asse Y)
+    const tolerance = 0.2; // Tolleranza per la deviazione dall'asse Y
     const isParallelToFloor = Math.abs(normalizedNormal.y) > (1 - tolerance);
 
-    const planeExtent = Math.abs(points3D[0].x - points3D[1].x) > 2 && Math.abs(points3D[0].y - points3D[2].y) > 2;
-
-    if (isParallelToFloor && planeExtent) {
+    if (isParallelToFloor) {
       return points3D;
     } else {
-      console.log('Superficie scartata: non è parallela al pavimento o troppo piccola.');
+      console.log('Superficie scartata: non è parallela al pavimento.');
       return null;
     }
   }
 
-  function combinePlanes(newPlane) {
-    allPlanes.push(...newPlane);
+  function combinePlanes(planes) {
+    if (planes.length === 0) return null;
 
-    const totalPoints = allPlanes.length;
-    const centroid = allPlanes.reduce((sum, p) => ({
-      x: sum.x + p.x / totalPoints,
-      y: sum.y + p.y / totalPoints,
-      z: sum.z / totalPoints
-    }), { x: 0, y: 0, z: 0 });
-
+    // Calcolo della normale media dei piani combinati
     let sumNormalX = 0, sumNormalY = 0, sumNormalZ = 0;
-    for (let i = 0; i < allPlanes.length - 1; i++) {
-      const p1 = allPlanes[i];
-      const p2 = allPlanes[i + 1];
+    planes.forEach(plane => {
+      plane.forEach(point => {
+        const normalX = (point.y - point.z) * (point.z - point.y) - (point.z - point.z) * (point.y - point.y);
+        const normalY = (point.z - point.z) * (point.x - point.x) - (point.x - point.x) * (point.z - point.z);
+        const normalZ = (point.x - point.x) * (point.y - point.y) - (point.y - point.y) * (point.x - point.x);
 
-      const normalX = (p1.y - centroid.y) * (p2.z - centroid.z) - (p1.z - centroid.z) * (p2.y - centroid.y);
-      const normalY = (p1.z - centroid.z) * (p2.x - centroid.x) - (p1.x - centroid.x) * (p2.z - centroid.z);
-      const normalZ = (p1.x - centroid.x) * (p2.y - centroid.y) - (p1.y - centroid.y) * (p2.x - centroid.x);
+        sumNormalX += normalX;
+        sumNormalY += normalY;
+        sumNormalZ += normalZ;
+      });
+    });
 
-      sumNormalX += normalX;
-      sumNormalY += normalY;
-      sumNormalZ += normalZ;
-    }
+    const avgNormalX = sumNormalX / planes.length;
+    const avgNormalY = sumNormalY / planes.length;
+    const avgNormalZ = sumNormalZ / planes.length;
 
-    const avgNormalX = sumNormalX / allPlanes.length;
-    const avgNormalY = sumNormalY / allPlanes.length;
-    const avgNormalZ = sumNormalZ / allPlanes.length;
-
+    // Normalizzazione della normale
     const normalMagnitude = Math.sqrt(avgNormalX * avgNormalX + avgNormalY * avgNormalY + avgNormalZ * avgNormalZ);
     const normalizedNormal = {
       x: avgNormalX / normalMagnitude,
@@ -234,34 +230,59 @@ function initializeApp() {
       z: avgNormalZ / normalMagnitude
     };
 
-    const tolerance = 0.2;
-    if (Math.abs(normalizedNormal.y) > (1 - tolerance)) {
-      console.log('Piano combinato con successo');
-      return allPlanes;
-    } else {
-      console.log('Piano scartato: normale non allineata con Y.');
-      return null;
+    // Crea un piano combinato con la normale media
+    return {
+      normal: normalizedNormal,
+      points: []
+    };
+  }
+
+  function drawDebug(points, plane) {
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+
+    points.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
+      debugCtx.fillStyle = "red";
+      debugCtx.fill();
+    });
+
+       if (plane && plane.points.length >= 4) {
+      debugCtx.beginPath();
+      debugCtx.moveTo(plane.points[0].x, plane.points[0].y);
+      plane.points.forEach((point, index) => {
+        if (index > 0) {
+          debugCtx.lineTo(point.x, point.y);
+        }
+      });
+      debugCtx.closePath();
+      debugCtx.strokeStyle = "blue";
+      debugCtx.lineWidth = 2;
+      debugCtx.stroke();
     }
   }
 
   function processVideo() {
     if (!cvLoaded) {
-      requestAnimationFrame(processVideo);
       return;
     }
 
     const points = detectFeatures();
     const filteredPoints = filterPoints(points);
     const plane = estimate3DPlane(filteredPoints);
-    
+
     if (plane) {
-      const combinedPlane = combinePlanes(plane);
-      if (combinedPlane) {
-        const meanZ = combinedPlane.reduce((sum, p) => sum + p.z, 0) / combinedPlane.length;
-        const smoothedX = kalmanX.update(combinedPlane[0].x);
-        const smoothedY = kalmanY.update(combinedPlane[0].y);
-        const smoothedZ = kalmanZ.update(meanZ);
+      detectedPlane = combinePlanes([detectedPlane, plane].filter(p => p !== null));
+      drawDebug(filteredPoints, detectedPlane);
+
+      if (detectedPlane) {
+        const meanZ = detectedPlane.points.reduce((sum, p) => sum + p.z, 0) / detectedPlane.points.length;
+        const smoothedX = kalmanX.update(detectedPlane.points[0].x);
+        const smoothedY = kalmanY.update(detectedPlane.points[0].y);
+        const smoothedZ = kalmanZ.update(meanZ); 
+
         camera.object3D.position.set(smoothedX, smoothedY, smoothedZ);
+        console.log('Piano rilevato e salvato:', detectedPlane);
       }
     }
 
