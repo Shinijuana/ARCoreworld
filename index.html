@@ -194,7 +194,7 @@ function initializeApp() {
     const isParallelToFloor = Math.abs(normalizedNormal.y) > (1 - tolerance);
 
     if (isParallelToFloor) {
-      return points3D;
+      return { points: points3D, normal: normalizedNormal };
     } else {
       console.log('Superficie scartata: non è parallela al pavimento.');
       return null;
@@ -202,39 +202,14 @@ function initializeApp() {
   }
 
   function combinePlanes(planes) {
-    if (planes.length === 0) return null;
+    const validPlanes = planes.filter(p => p !== null);
+    if (validPlanes.length === 0) return null;
 
-    // Calcolo della normale media dei piani combinati
-    let sumNormalX = 0, sumNormalY = 0, sumNormalZ = 0;
-    planes.forEach(plane => {
-      plane.forEach(point => {
-        const normalX = (point.y - point.z) * (point.z - point.y) - (point.z - point.z) * (point.y - point.y);
-        const normalY = (point.z - point.z) * (point.x - point.x) - (point.x - point.x) * (point.z - point.z);
-        const normalZ = (point.x - point.x) * (point.y - point.y) - (point.y - point.y) * (point.x - point.x);
+    const combinedPoints = [];
+    validPlanes.forEach(plane => combinedPoints.push(...plane.points));
 
-        sumNormalX += normalX;
-        sumNormalY += normalY;
-        sumNormalZ += normalZ;
-      });
-    });
-
-    const avgNormalX = sumNormalX / planes.length;
-    const avgNormalY = sumNormalY / planes.length;
-    const avgNormalZ = sumNormalZ / planes.length;
-
-    // Normalizzazione della normale
-    const normalMagnitude = Math.sqrt(avgNormalX * avgNormalX + avgNormalY * avgNormalY + avgNormalZ * avgNormalZ);
-    const normalizedNormal = {
-      x: avgNormalX / normalMagnitude,
-      y: avgNormalY / normalMagnitude,
-      z: avgNormalZ / normalMagnitude
-    };
-
-    // Crea un piano combinato con la normale media
-    return {
-      normal: normalizedNormal,
-      points: []
-    };
+    // Recompute the plane with the combined points
+    return estimate3DPlane(filterPoints(combinedPoints));
   }
 
   function drawDebug(points, plane) {
@@ -247,7 +222,7 @@ function initializeApp() {
       debugCtx.fill();
     });
 
-       if (plane && plane.points.length >= 4) {
+    if (plane && plane.points.length >= 4) {
       debugCtx.beginPath();
       debugCtx.moveTo(plane.points[0].x, plane.points[0].y);
       plane.points.forEach((point, index) => {
@@ -272,10 +247,10 @@ function initializeApp() {
     const plane = estimate3DPlane(filteredPoints);
 
     if (plane) {
-      detectedPlane = combinePlanes([detectedPlane, plane].filter(p => p !== null));
+      detectedPlane = combinePlanes([detectedPlane, plane]);
       drawDebug(filteredPoints, detectedPlane);
 
-      if (detectedPlane) {
+      if (detectedPlane && detectedPlane.points.length > 0) {
         const meanZ = detectedPlane.points.reduce((sum, p) => sum + p.z, 0) / detectedPlane.points.length;
         const smoothedX = kalmanX.update(detectedPlane.points[0].x);
         const smoothedY = kalmanY.update(detectedPlane.points[0].y);
@@ -290,7 +265,5 @@ function initializeApp() {
   }
 }
 </script>
-
-
 </body>
 </html>
