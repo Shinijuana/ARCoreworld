@@ -212,39 +212,42 @@ function isStable(planePoint) {
 
 
   // Processamento video in tempo reale
-  function processVideo() {
+ function processVideo() {
     const features = detectFeatures();
     const filteredFeatures = filterPoints(features);
     
     if (filteredFeatures.length > 0) {
-      const planeNormal = estimate3DPlane(filteredFeatures);
+        const planeNormal = estimate3DPlane(filteredFeatures);
 
-      if (planeNormal) {
-        // Simula l'aggiornamento della fotocamera nel mondo 3D
-        const smoothX = kalmanX.update(planeNormal.x);
-        const smoothY = kalmanY.update(planeNormal.y);
-        const smoothZ = kalmanZ.update(planeNormal.z);
+        if (planeNormal) {
+            // Simula l'aggiornamento della fotocamera nel mondo 3D
+            const smoothX = kalmanX.update(planeNormal.x);
+            const smoothY = kalmanY.update(planeNormal.y);
+            const smoothZ = kalmanZ.update(planeNormal.z);
 
-        camera.setAttribute('position', `${smoothX} ${smoothY} ${smoothZ}`);
-      }
+            camera.setAttribute('position', `${smoothX} ${smoothY} ${smoothZ}`);
+        }
+
+        // Aggiungi il codice qui per gestire l'astronave
+        const planePoint = estimate3DPlane(filteredFeatures);
+        if (planePoint && isStable(planePoint)) {
+            document.getElementById('astronave').setAttribute('position', `${planePoint.x} ${planePoint.y} ${planePoint.z}`);
+        }
     }
 
     // Disegna i punti rilevati nel canvas di debug
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
     filteredFeatures.forEach(p => {
-      debugCtx.beginPath();
-      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-      debugCtx.fillStyle = "red";
-      debugCtx.fill();
-      debugCtx.stroke();
+        debugCtx.beginPath();
+        debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+        debugCtx.fillStyle = "red";
+        debugCtx.fill();
+        debugCtx.stroke();
     });
 
     requestAnimationFrame(processVideo);
-  }
-const planePoint = estimate3DPlane(filteredFeatures);
-if (planePoint && isStable(planePoint)) {
-  document.getElementById('astronave').setAttribute('position', `${planePoint.x} ${planePoint.y} ${planePoint.z}`);
 }
+
 
 window.addEventListener('devicemotion', (event) => {
   const acceleration = event.accelerationIncludingGravity;
