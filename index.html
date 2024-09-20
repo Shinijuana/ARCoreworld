@@ -175,7 +175,7 @@ function initializeApp() {
     const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
     const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-    const threshold = 50; // Threshold for outlier removal
+    const threshold = 0; // Threshold for outlier removal
     return points.filter(p => {
       const distance = Math.sqrt(Math.pow(p.x - meanX, 2) + Math.pow(p.y - meanY, 2));
       return distance < threshold;
@@ -212,30 +212,31 @@ function isStable(planePoint) {
 
 
   // Processamento video in tempo reale
- function processVideo() {
+function processVideo() {
     const features = detectFeatures();
     const filteredFeatures = filterPoints(features);
     
+    console.log('Features filtrate:', filteredFeatures);
+
     if (filteredFeatures.length > 0) {
         const planeNormal = estimate3DPlane(filteredFeatures);
+        console.log('Piano normale:', planeNormal);
 
         if (planeNormal) {
-            // Simula l'aggiornamento della fotocamera nel mondo 3D
             const smoothX = kalmanX.update(planeNormal.x);
             const smoothY = kalmanY.update(planeNormal.y);
             const smoothZ = kalmanZ.update(planeNormal.z);
 
             camera.setAttribute('position', `${smoothX} ${smoothY} ${smoothZ}`);
-        }
 
-        // Aggiungi il codice qui per gestire l'astronave
-        const planePoint = estimate3DPlane(filteredFeatures);
-        if (planePoint && isStable(planePoint)) {
-            document.getElementById('astronave').setAttribute('position', `${planePoint.x} ${planePoint.y} ${planePoint.z}`);
+            const planePoint = estimate3DPlane(filteredFeatures);
+            if (planePoint && isStable(planePoint)) {
+                console.log('Punto stabilizzato:', planePoint);
+                document.getElementById('astronave').setAttribute('position', `${planePoint.x} ${planePoint.y} ${planePoint.z}`);
+            }
         }
     }
 
-    // Disegna i punti rilevati nel canvas di debug
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
     filteredFeatures.forEach(p => {
         debugCtx.beginPath();
@@ -247,6 +248,7 @@ function isStable(planePoint) {
 
     requestAnimationFrame(processVideo);
 }
+
 
 
 window.addEventListener('devicemotion', (event) => {
