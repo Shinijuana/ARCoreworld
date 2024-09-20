@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Astronave con SLAM</title>
+  <title>AR SLAM Basic</title>
   
   <!-- A-Frame for rendering the scene -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
@@ -137,6 +137,7 @@ function initializeApp() {
     console.error('Errore nell\'accesso alla fotocamera: ', error);
   });
 
+  // Funzione di rilevamento caratteristiche ORB
   function detectFeatures() {
     const orb = new cv.ORB();
     const keypoints = new cv.KeyPointVector();
@@ -167,6 +168,7 @@ function initializeApp() {
     return points;
   }
 
+  // Filtro per rimuovere outliers
   function filterPoints(points) {
     const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
     const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
@@ -178,23 +180,22 @@ function initializeApp() {
     });
   }
 
+  // Funzione per stimare il piano 3D
   function estimate3DPlane(points2D) {
     if (points2D.length < 4) {
         console.error('Not enough points to estimate a plane.');
         return null;
     }
 
-    // Convert 2D points to 3D with variable depth
     const points3D = points2D.map(p => {
         const depth = 1 + (p.y / canvas.height); // Vary depth based on Y axis
         return {
             x: (p.x / canvas.width) * 10 - 5,
             y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-            z: depth * depthScale // Variable depth
+            z: depth * depthScale 
         };
     });
 
-    // Calculate the normal of the plane using the cross product of vectors
     const p1 = points3D[0], p2 = points3D[1], p3 = points3D[2];
 
     const v1 = {
@@ -209,78 +210,58 @@ function initializeApp() {
         z: p3.z - p1.z
     };
 
-    // Cross product v1 × v2 gives us the normal to the plane
     const normal = {
         x: v1.y * v2.z - v1.z * v2.y,
         y: v1.z * v2.x - v1.x * v2.z,
         z: v1.x * v2.y - v1.y * v2.x
     };
 
-    // Normalize the normal vector
-    const magnitude = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-    normal.x /= magnitude;
-    normal.y /= magnitude;
-    normal.z /= magnitude;
+    const length = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+    normal.x /= length;
+    normal.y /= length;
+    normal.z /= length;
 
-    // We want planes that are mostly horizontal, meaning the normal is mostly pointing along the Y axis
-    const verticalThreshold = 0.9; // Adjust this threshold based on the tolerance you want
-
-    if (Math.abs(normal.y) > verticalThreshold) {
-        return points3D; // The plane is horizontal or near-horizontal
-    } else {
-        console.log('Plane discarded, normal not aligned with Y-axis.');
-        return null; // Discard planes that are too vertical
-    }
-}
-
-
-  function drawDebug(points, plane) {
-    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-
-    // Draw points
-    points.forEach(p => {
-      debugCtx.beginPath();
-      debugCtx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
-      debugCtx.fillStyle = "red";
-      debugCtx.fill();
-    });
-
-    // Draw plane (as a rectangle for now, based on the first 2 points)
-    if (points.length >= 4) {
-      debugCtx.beginPath();
-      debugCtx.moveTo(points[0].x, points[0].y);
-      debugCtx.lineTo(points[1].x, points[1].y);
-      debugCtx.lineTo(points[2].x, points[2].y);
-      debugCtx.lineTo(points[3].x, points[3].y);
-      debugCtx.closePath();
-      debugCtx.strokeStyle = "blue";
-      debugCtx.lineWidth = 2;
-      debugCtx.stroke();
-    }
+    return normal;
   }
 
+  // Processamento video in tempo reale
   function processVideo() {
-    if (!cvLoaded) {
-      return;
+    const features = detectFeatures();
+    const filteredFeatures = filterPoints(features);
+    
+    if (filteredFeatures.length > 0) {
+      const planeNormal = estimate3DPlane(filteredFeatures);
+
+      if (planeNormal) {
+        // Simula l'aggiornamento della fotocamera nel mondo 3D
+        const smoothX = kalmanX.update(planeNormal.x);
+        const smoothY = kalmanY.update(planeNormal.y);
+        const smoothZ = kalmanZ.update(planeNormal.z);
+
+        camera.setAttribute('position', `${smoothX} ${smoothY} ${smoothZ}`);
+      }
     }
 
-    const points = detectFeatures();
-    const filteredPoints = filterPoints(points);
-    const plane = estimate3DPlane(filteredPoints);
-    drawDebug(filteredPoints, plane);
-
-    if (plane && plane.length >= 4) {
-      const meanZ = plane.reduce((sum, p) => sum + p.z, 0) / plane.length;
-
-      const smoothedX = kalmanX.update(plane[0].x);
-      const smoothedY = kalmanY.update(plane[0].y);
-      const smoothedZ = kalmanZ.update(meanZ); 
-
-      camera.object3D.position.set(smoothedX, smoothedY, smoothedZ);
-    }
+    // Disegna i punti rilevati nel canvas di debug
+    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+    filteredFeatures.forEach(p => {
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+      debugCtx.fillStyle = "red";
+      debugCtx.fill();
+      debugCtx.stroke();
+    });
 
     requestAnimationFrame(processVideo);
   }
+
+  window.addEventListener('devicemotion', (event) => {
+    const acceleration = event.acceleration;
+    const rotationRate = event.rotationRate;
+
+    // Usa i dati dei sensori per migliorare la stima del movimento della fotocamera
+    // Aggiungi qui il codice per combinare i dati del sensore con il movimento stimato
+  });
 }
 </script>
 </body>
