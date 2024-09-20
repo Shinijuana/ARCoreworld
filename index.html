@@ -183,14 +183,12 @@ function initializeApp() {
   }
 
   // Funzione per stimare il piano 3D
-  function estimate3DPlane(points2D) {
-  // Continua a stimare il piano solo se ci sono abbastanza punti stabili
-  if (points2D.length < 4) {
-    return null;
-  }
+function estimate3DPlane(points2D) {
+  // Continua solo se ci sono abbastanza punti
+  if (points2D.length < 4) return null;
 
   const points3D = points2D.map(p => {
-    const depth = 1 + (p.y / canvas.height); // Profondità approssimativa
+    const depth = 1 + (p.y / canvas.height);  // Stima la profondità
     return {
       x: (p.x / canvas.width) * 10 - 5,
       y: Math.max((p.y / canvas.height) * 10 - 5, 0),
@@ -198,36 +196,19 @@ function initializeApp() {
     };
   });
 
-  const p1 = points3D[0], p2 = points3D[1], p3 = points3D[2];
+  // Calcola un punto medio per ancorare l'astronave
+  const avgX = points3D.reduce((sum, p) => sum + p.x, 0) / points3D.length;
+  const avgY = points3D.reduce((sum, p) => sum + p.y, 0) / points3D.length;
+  const avgZ = points3D.reduce((sum, p) => sum + p.z, 0) / points3D.length;
 
-  const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
-  const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
-
-  const normal = {
-    x: v1.y * v2.z - v1.z * v2.y,
-    y: v1.z * v2.x - v1.x * v2.z,
-    z: v1.x * v2.y - v1.y * v2.x
-  };
-
-  const length = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-  normal.x /= length;
-  normal.y /= length;
-  normal.z /= length;
-
-  // Se il piano stimato è abbastanza stabile, aggiorna la posizione dell'astronave
-  if (isStable(normal)) {
-    // Ancorare l'astronave al piano stimato
-    document.getElementById('astronave').setAttribute('position', `${normal.x} ${normal.y} ${normal.z}`);
-  }
-
-  return normal;
+  return { x: avgX, y: avgY, z: avgZ };
 }
 
-function isStable(normal) {
-  // Una semplice logica di stabilità che verifica se il piano rilevato non cambia drasticamente
-  // Qui puoi implementare una logica più complessa, basata su tolleranze personalizzate
-  return Math.abs(normal.x) < 0.05 && Math.abs(normal.y) < 0.05 && Math.abs(normal.z) < 0.05;
+function isStable(planePoint) {
+  // Implementa una logica per vedere se il punto è stabile, per ora mettiamo una tolleranza fissa
+  return Math.abs(planePoint.x) < 5 && Math.abs(planePoint.y) < 5 && Math.abs(planePoint.z) < 5;
 }
+
 
 
   // Processamento video in tempo reale
@@ -260,6 +241,10 @@ function isStable(normal) {
 
     requestAnimationFrame(processVideo);
   }
+const planePoint = estimate3DPlane(filteredFeatures);
+if (planePoint && isStable(planePoint)) {
+  document.getElementById('astronave').setAttribute('position', `${planePoint.x} ${planePoint.y} ${planePoint.z}`);
+}
 
 window.addEventListener('devicemotion', (event) => {
   const acceleration = event.accelerationIncludingGravity;
