@@ -10,8 +10,7 @@
   
   <!-- OpenCV.js library -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()" onerror="onOpenCvError()"></script>
-   <script src="https://cdn.jsdelivr.net/npm/kalmanjs/kalman.min.js"></script>
-
+  <script src="https://cdn.jsdelivr.net/npm/kalmanjs/kalman.min.js"></script>
 
   <style>
     body {
@@ -175,7 +174,7 @@ function initializeApp() {
     const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
     const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-    const threshold = 0; // Threshold for outlier removal
+    const threshold = 50; // Threshold for outlier removal
     return points.filter(p => {
       const distance = Math.sqrt(Math.pow(p.x - meanX, 2) + Math.pow(p.y - meanY, 2));
       return distance < threshold;
@@ -183,114 +182,102 @@ function initializeApp() {
   }
 
   // Funzione per stimare il piano 3D
-function estimate3DPlane(points2D) {
-  // Continua solo se ci sono abbastanza punti
-  if (points2D.length < 4) return null;
+  function estimate3DPlane(points2D) {
+    if (points2D.length < 4) {
+      return null;
+    }
 
-  const points3D = points2D.map(p => {
-    const depth = 1 + (p.y / canvas.height);  // Stima la profondità
-    return {
-      x: (p.x / canvas.width) * 10 - 5,
-      y: Math.max((p.y / canvas.height) * 10 - 5, 0),
-      z: depth * depthScale
+    const points3D = points2D.map(p => {
+      const depth = 1 + (p.y / canvas.height); // Profondità approssimativa
+      return {
+        x: (p.x / canvas.width) * 10 - 5,
+        y: Math.max((p.y / canvas.height) * 10 - 5, 0),
+        z: depth * depthScale
+      };
+    });
+
+    const p1 = points3D[0], p2 = points3D[1], p3 = points3D[2];
+
+    const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+    const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
+
+    const normal = {
+      x: v1.y * v2.z - v1.z * v2.y,
+      y: v1.z * v2.x - v1.x * v2.z,
+      z: v1.x * v2.y - v1.y * v2.x
     };
-  });
 
-  // Calcola un punto medio per ancorare l'astronave
-  const avgX = points3D.reduce((sum, p) => sum + p.x, 0) / points3D.length;
-  const avgY = points3D.reduce((sum, p) => sum + p.y, 0) / points3D.length;
-  const avgZ = points3D.reduce((sum, p) => sum + p.z, 0) / points3D.length;
+    const length = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+    normal.x /= length;
+    normal.y /= length;
+    normal.z /= length;
 
-  return { x: avgX, y: avgY, z: avgZ };
-}
+    if (isStable(normal)) {
+      document.getElementById('astronave').setAttribute('position', `${normal.x} ${normal.y} ${normal.z}`);
+    }
 
-function isStable(planePoint) {
-  // Implementa una logica per vedere se il punto è stabile, per ora mettiamo una tolleranza fissa
-  return Math.abs(planePoint.x) < 5 && Math.abs(planePoint.y) < 5 && Math.abs(planePoint.z) < 5;
-}
+    return normal;
+  }
 
+  function isStable(normal) {
+    return Math.abs(normal.x) < 0.05 && Math.abs(normal.y) < 0.05 && Math.abs(normal.z) < 0.05;
+  }
 
-
-  // Processamento video in tempo reale
-function processVideo() {
+  function processVideo() {
     const features = detectFeatures();
     const filteredFeatures = filterPoints(features);
     
-    console.log('Features filtrate:', filteredFeatures);
-
     if (filteredFeatures.length > 0) {
-        const planeNormal = estimate3DPlane(filteredFeatures);
-        console.log('Piano normale:', planeNormal);
+      const planeNormal = estimate3DPlane(filteredFeatures);
 
-        if (planeNormal) {
-            const smoothX = kalmanX.update(planeNormal.x);
-            const smoothY = kalmanY.update(planeNormal.y);
-            const smoothZ = kalmanZ.update(planeNormal.z);
+      if (planeNormal) {
+        const smoothX = kalmanX.update(planeNormal.x);
+        const smoothY = kalmanY.update(planeNormal.y);
+        const smoothZ = kalmanZ.update(planeNormal.z);
 
-            camera.setAttribute('position', `${smoothX} ${smoothY} ${smoothZ}`);
-
-            const planePoint = estimate3DPlane(filteredFeatures);
-            if (planePoint && isStable(planePoint)) {
-                console.log('Punto stabilizzato:', planePoint);
-                document.getElementById('astronave').setAttribute('position', `${planePoint.x} ${planePoint.y} ${planePoint.z}`);
-            }
-        }
+        camera.setAttribute('position', `${smoothX} ${smoothY} ${smoothZ}`);
+      }
     }
 
     debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
     filteredFeatures.forEach(p => {
-        debugCtx.beginPath();
-        debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
-        debugCtx.fillStyle = "red";
-        debugCtx.fill();
-        debugCtx.stroke();
+      debugCtx.beginPath();
+      debugCtx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
+      debugCtx.fillStyle = "red";
+      debugCtx.fill();
+      debugCtx.stroke();
     });
 
     requestAnimationFrame(processVideo);
+  }
+
+  window.addEventListener('devicemotion', (event) => {
+    const acceleration = event.accelerationIncludingGravity;
+    const rotationRate = event.rotationRate;
+
+    let accelX = acceleration.x;
+    let accelY = acceleration.y;
+    let accelZ = acceleration.z;
+
+    accelX = kalmanX.update(accelX);
+    accelY = kalmanY.update(accelY);
+    accelZ = kalmanZ.update(accelZ);
+
+    const newPosX = camera.getAttribute('position').x + accelX * 0.01;
+    const newPosY = camera.getAttribute('position').y + accelY * 0.01;
+    const newPosZ = camera.getAttribute('position').z + accelZ * 0.01;
+
+    camera.setAttribute('position', `${newPosX} ${newPosY} ${newPosZ}`);
+
+    const currentRotation = camera.getAttribute('rotation');
+    const newRotX = currentRotation.x + rotationRate.alpha * 0.1;
+    const newRotY = currentRotation.y + rotationRate.beta * 0.1;
+    const newRotZ = currentRotation.z + rotationRate.gamma * 0.1;
+
+    camera.setAttribute('rotation', `${newRotX} ${newRotY} ${newRotZ}`);
+  });
 }
 
-
-
-window.addEventListener('devicemotion', (event) => {
-  const acceleration = event.accelerationIncludingGravity;
-  const rotationRate = event.rotationRate;
-
-  // Se vuoi usare solo l'accelerazione senza gravità
-  const accelWithoutGravity = event.acceleration;
-
-  // Usa i dati di accelerazione
-  let accelX = acceleration.x;  // Acceleration along X-axis
-  let accelY = acceleration.y;  // Acceleration along Y-axis
-  let accelZ = acceleration.z;  // Acceleration along Z-axis
-  
-  // Usa i dati di rotazione
-  let rotX = rotationRate.alpha; // Rotazione attorno all'asse Z (gradi al secondo)
-  let rotY = rotationRate.beta;  // Rotazione attorno all'asse X (gradi al secondo)
-  let rotZ = rotationRate.gamma; // Rotazione attorno all'asse Y (gradi al secondo)
-
-  // Normalizza i dati e applica un filtro per ridurre il rumore
-  accelX = kalmanX.update(accelX);
-  accelY = kalmanY.update(accelY);
-  accelZ = kalmanZ.update(accelZ);
-
-  // Aggiorna la posizione della telecamera in base ai dati di accelerazione
-  // Il valore 0.01 serve a scalare il movimento per renderlo più fluido e meno drastico
-  const newPosX = camera.getAttribute('position').x + accelX * 0.01;
-  const newPosY = camera.getAttribute('position').y + accelY * 0.01;
-  const newPosZ = camera.getAttribute('position').z + accelZ * 0.01;
-
-  camera.setAttribute('position', `${newPosX} ${newPosY} ${newPosZ}`);
-
-  // Se vuoi aggiornare anche la rotazione della telecamera:
-  const currentRotation = camera.getAttribute('rotation');
-  const newRotX = currentRotation.x + rotX * 0.1; // Scaling for smoother rotation
-  const newRotY = currentRotation.y + rotY * 0.1;
-  const newRotZ = currentRotation.z + rotZ * 0.1;
-
-  camera.setAttribute('rotation', `${newRotX} ${newRotY} ${newRotZ}`);
-});
-
-}
 </script>
 </body>
 </html>
