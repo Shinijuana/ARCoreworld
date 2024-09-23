@@ -110,28 +110,36 @@ function initializeApp() {
     });
 
   function detectFeatures() {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const src = cv.matFromImageData(imageData);
-    const gray = new cv.Mat();
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const src = cv.matFromImageData(imageData);
+  const gray = new cv.Mat();
 
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    const orb = new cv.ORB();
-    const keypoints = new cv.Mat();
-    const descriptors = new cv.Mat();
+  const orb = new cv.ORB();
+  
+  // Correzione: Usa cv.KeyPointVector per i keypoints
+  const keypoints = new cv.KeyPointVector();
+  const descriptors = new cv.Mat();
 
-    orb.detectAndCompute(gray, new cv.Mat(), keypoints, descriptors);
-    const points = [];
+  orb.detectAndCompute(gray, new cv.Mat(), keypoints, descriptors);
+  const points = [];
 
-    for (let i = 0; i < keypoints.rows; i++) {
-      const pt = keypoints.row(i).data32F;
-      points.push({ x: pt[0], y: pt[1] });
-    }
-
-    src.delete(); gray.delete(); keypoints.delete(); descriptors.delete();
-    return points;
+  // Itera su keypoints correttamente con keypoints.get()
+  for (let i = 0; i < keypoints.size(); i++) {
+    const pt = keypoints.get(i).pt;
+    points.push({ x: pt.x, y: pt.y });
   }
+
+  src.delete(); 
+  gray.delete(); 
+  keypoints.delete(); // Non dimenticare di eliminare keypoints
+  descriptors.delete();
+
+  return points;
+}
+
 
   function filterPoints(points) {
     return points.filter(p => p.x >= 0 && p.y >= 0 && p.x < canvas.width && p.y < canvas.height);
